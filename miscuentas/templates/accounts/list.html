@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <h2>Cuentas</h2>
+  <a class="btn btn-primary" href="{{ url_for('accounts.new') }}">Nueva cuenta</a>
+</div>
+<table class="table">
+  <thead><tr><th>Nombre</th><th>Moneda</th><th class="text-end">Saldo</th><th class="text-end">Equivalente ARS</th><th></th></tr></thead>
+  <tbody>
+  {% for s in snaps %}
+    <tr>
+      <td>{{ s.account.name }}{% if s.account.archived %} <span class="badge bg-secondary">archivada</span>{% endif %}</td>
+      <td><span class="badge {{ 'badge-usd' if s.account.currency=='USD' else 'badge-ars' }}">{{ s.account.currency }}</span></td>
+      <td class="text-end text-mono">{{ s.balance_minor | money(s.account.currency) }}</td>
+      <td class="text-end small-muted">{{ s.balance_ars_minor | ars }}</td>
+      <td><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('accounts.edit', acc_id=s.account.id) }}">Editar</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ 'Editar' if debt else 'Nueva' }} deuda</h2>
+<form method="post" class="row g-3" style="max-width: 720px;">
+  <div class="col-md-8">
+    <label class="form-label">Contraparte</label>
+    <input class="form-control" name="counterparty" required value="{{ debt.counterparty if debt else '' }}">
+  </div>
+  {% if not debt %}
+  <div class="col-md-4">
+    <label class="form-label">Dirección</label>
+    <select class="form-select" name="direction">
+      <option value="receivable">A cobrar</option>
+      <option value="payable">A pagar</option>
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Monto principal</label>
+    <input class="form-control" type="number" step="0.01" min="0.01" name="principal" required>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Moneda</label>
+    <select class="form-select" name="currency">
+      <option value="ARS">ARS</option>
+      <option value="USD">USD</option>
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">FX (sólo USD)</label>
+    <input class="form-control" type="number" step="0.0001" min="0" name="fx_rate" value="{{ current_rate or '' }}">
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Abierta el</label>
+    <input class="form-control" type="date" name="opened_on" value="{{ today.isoformat() }}">
+  </div>
+  {% endif %}
+  <div class="col-md-6">
+    <label class="form-label">Vence (opcional)</label>
+    <input class="form-control" type="date" name="due_on" value="{{ debt.due_on.isoformat() if debt and debt.due_on else '' }}">
+  </div>
+  {% if debt %}
+  <div class="col-md-4">
+    <label class="form-label">Estado</label>
+    <select class="form-select" name="status">
+      {% for s in ['open','partial','settled','cancelled'] %}
+        <option value="{{ s }}" {% if debt.status==s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <div class="col-12">
+    <label class="form-label">Notas</label>
+    <textarea class="form-control" name="notes" rows="2">{{ debt.notes if debt else '' }}</textarea>
+  </div>
+  <div class="col-12">
+    <button class="btn btn-primary">Guardar</button>
+    <a class="btn btn-link" href="{{ url_for('debts.list_debts') }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

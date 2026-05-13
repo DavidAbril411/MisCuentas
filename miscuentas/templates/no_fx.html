@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="alert alert-warning">
+  <h4>No hay cotización USD/ARS cargada.</h4>
+  <p>Necesitás registrar al menos una cotización antes de poder usar la app.</p>
+  <a class="btn btn-primary" href="{{ url_for('fx.new') }}">Cargar cotización</a>
+</div>
+{% endblock %}

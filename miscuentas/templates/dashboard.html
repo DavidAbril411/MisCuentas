@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · MisCuentas{% endblock %}
+{% block content %}
+
+<div class="row mb-3">
+  <div class="col">
+    <h2>Resumen al {{ today.strftime("%d-%m-%Y") }}</h2>
+    <p class="small-muted">Cotización vigente: 1 USD = {{ rate }} ARS &middot;
+      <a href="{{ url_for('fx.new') }}">actualizar</a></p>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card shadow-sm"><div class="card-body">
+      <div class="small-muted">Patrimonio neto</div>
+      <div class="h3 {{ 'money-pos' if nw.total_minor >= 0 else 'money-neg' }}">{{ nw.total_minor | ars }}</div>
+      <div class="small-muted">Cuentas + a cobrar − a pagar</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm"><div class="card-body">
+      <div class="small-muted">En cuentas</div>
+      <div class="h4">{{ nw.accounts_ars_minor | ars }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm"><div class="card-body">
+      <div class="small-muted">A cobrar</div>
+      <div class="h4 money-pos">{{ nw.receivables_ars_minor | ars }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm"><div class="card-body">
+      <div class="small-muted">A pagar</div>
+      <div class="h4 money-neg">{{ nw.payables_ars_minor | ars }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card shadow-sm"><div class="card-body">
+      <h5>Flujo recurrente mensual</h5>
+      <table class="table table-sm mb-0">
+        <tr><td>Ingresos recurrentes</td><td class="text-end money-pos">{{ rec_income | ars }}</td></tr>
+        <tr><td>Gastos recurrentes</td><td class="text-end money-neg">−{{ rec_expense | ars }}</td></tr>
+        <tr class="fw-bold"><td>Neto mensual</td><td class="text-end {{ 'money-pos' if rec_net >= 0 else 'money-neg' }}">{{ rec_net | ars }}</td></tr>
+      </table>
+      <div class="small-muted mt-2">USD convertido a la cotización vigente.</div>
+    </div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm"><div class="card-body">
+      <h5>Cuentas</h5>
+      <table class="table table-sm mb-0">
+        {% for s in accounts %}
+          <tr>
+            <td>
+              {{ s.account.name }}
+              <span class="badge {{ 'badge-usd' if s.account.currency == 'USD' else 'badge-ars' }}">{{ s.account.currency }}</span>
+            </td>
+            <td class="text-end text-mono">{{ s.balance_minor | money(s.account.currency) }}</td>
+            <td class="text-end small-muted">{{ s.balance_ars_minor | ars }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card shadow-sm"><div class="card-body">
+      <h5>A cobrar ({{ receivables | length }})</h5>
+      {% if receivables %}
+      <table class="table table-sm mb-0">
+        <thead><tr><th>De</th><th>Vence</th><th class="text-end">Pendiente</th><th></th></tr></thead>
+        {% for s in receivables %}
+          <tr>
+            <td>{{ s.debt.counterparty }}</td>
+            <td>{{ s.debt.due_on.strftime("%d-%m-%Y") if s.debt.due_on else "—" }}</td>
+            <td class="text-end text-mono">{{ s.outstanding_minor | money(s.debt.currency) }}
+              <div class="small-muted">≈ {{ s.outstanding_ars_minor | ars }}</div>
+            </td>
+            <td><a class="btn btn-sm btn-outline-success" href="{{ url_for('debts.pay', debt_id=s.debt.id) }}">Cobrar</a></td>
+          </tr>
+        {% endfor %}
+      </table>
+      {% else %}<p class="small-muted">Nada por cobrar.</p>{% endif %}
+    </div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm"><div class="card-body">
+      <h5>A pagar ({{ payables | length }})</h5>
+      {% if payables %}
+      <table class="table table-sm mb-0">
+        <thead><tr><th>A</th><th>Vence</th><th class="text-end">Pendiente</th><th></th></tr></thead>
+        {% for s in payables %}
+          <tr>
+            <td>{{ s.debt.counterparty }}</td>
+            <td>{{ s.debt.due_on.strftime("%d-%m-%Y") if s.debt.due_on else "—" }}</td>
+            <td class="text-end text-mono">{{ s.outstanding_minor | money(s.debt.currency) }}
+              <div class="small-muted">≈ {{ s.outstanding_ars_minor | ars }}</div>
+            </td>
+            <td><a class="btn btn-sm btn-outline-danger" href="{{ url_for('debts.pay', debt_id=s.debt.id) }}">Pagar</a></td>
+          </tr>
+        {% endfor %}
+      </table>
+      {% else %}<p class="small-muted">Nada por pagar.</p>{% endif %}
+    </div></div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4"><div class="card-body">
+  <h5>Proyección {{ projection | length }} meses</h5>
+  <p class="small-muted">USD convertido a la cotización vigente; el modelo asume que el dólar se mantiene constante. Deudas sin vencimiento se asignan al primer mes.</p>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Mes</th>
+          <th class="text-end">Ingresos</th>
+          <th class="text-end">Gastos</th>
+          <th class="text-end">Cobros deuda</th>
+          <th class="text-end">Pagos deuda</th>
+          <th class="text-end">Cambio neto</th>
+          <th class="text-end">PN al cierre</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in projection %}
+        <tr>
+          <td>{{ row.month_label }}</td>
+          <td class="text-end money-pos">{{ row.income_ars_minor | ars }}</td>
+          <td class="text-end money-neg">−{{ row.expense_ars_minor | ars }}</td>
+          <td class="text-end money-pos">{{ row.receivable_due_ars_minor | ars }}</td>
+          <td class="text-end money-neg">−{{ row.payable_due_ars_minor | ars }}</td>
+          <td class="text-end {{ 'money-pos' if row.net_change_ars_minor >= 0 else 'money-neg' }}">{{ row.net_change_ars_minor | ars }}</td>
+          <td class="text-end fw-bold {{ 'money-pos' if row.closing_nw_ars_minor >= 0 else 'money-neg' }}">{{ row.closing_nw_ars_minor | ars }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <canvas id="projChart" height="80"></canvas>
+</div></div>
+
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  const labels = {{ projection | map(attribute='month_label') | list | tojson }};
+  const data = {{ projection | map(attribute='closing_nw_ars_minor') | list | tojson }}.map(v => v / 100);
+  new Chart(document.getElementById('projChart'), {
+    type: 'line',
+    data: { labels, datasets: [{ label: 'Patrimonio neto proyectado (ARS)', data, tension: 0.2 }] },
+    options: { plugins: { legend: { display: true } }, responsive: true }
+  });
+</script>
+{% endblock %}

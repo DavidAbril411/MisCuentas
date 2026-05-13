@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Nueva cotización</h2>
+<form method="post" class="row g-3" style="max-width: 480px;">
+  <div class="col-md-6">
+    <label class="form-label">Fecha</label>
+    <input class="form-control" type="date" name="effective_on" required value="{{ today.isoformat() }}">
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">1 USD = (ARS)</label>
+    <input class="form-control" type="number" step="0.0001" min="0.0001" name="rate" required>
+  </div>
+  <div class="col-12">
+    <label class="form-label">Fuente (opcional)</label>
+    <input class="form-control" name="source" placeholder="blue, oficial, etc.">
+  </div>
+  <div class="col-12">
+    <button class="btn btn-primary">Guardar</button>
+    <a class="btn btn-link" href="{{ url_for('fx.list_rates') }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

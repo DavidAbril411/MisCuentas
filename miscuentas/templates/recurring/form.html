@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ 'Editar' if rule else 'Nueva' }} regla recurrente</h2>
+<form method="post" class="row g-3" style="max-width: 720px;">
+  <div class="col-12">
+    <label class="form-label">Nombre</label>
+    <input class="form-control" name="name" required value="{{ rule.name if rule else '' }}">
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Tipo</label>
+    <select class="form-select" name="kind">
+      <option value="expense" {% if rule and rule.kind=='expense' %}selected{% endif %}>Gasto</option>
+      <option value="income" {% if rule and rule.kind=='income' %}selected{% endif %}>Ingreso</option>
+    </select>
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Monto</label>
+    <input class="form-control" type="number" step="0.01" min="0.01" name="amount" required
+           value="{{ (rule.amount_minor | decimal) if rule else '' }}">
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Moneda</label>
+    <select class="form-select" name="currency">
+      <option value="ARS" {% if rule and rule.currency=='ARS' %}selected{% endif %}>ARS</option>
+      <option value="USD" {% if rule and rule.currency=='USD' %}selected{% endif %}>USD</option>
+    </select>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Cuenta</label>
+    <select class="form-select" name="account_id" required>
+      {% for a in accounts %}
+        <option value="{{ a.id }}" {% if rule and rule.account_id==a.id %}selected{% endif %}>{{ a.name }} ({{ a.currency }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Categoría</label>
+    <select class="form-select" name="category_id">
+      <option value="">— (sin categoría)</option>
+      {% for c in categories %}
+        <option value="{{ c.id }}" {% if rule and rule.category_id==c.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Día del mes (1-28)</label>
+    <input class="form-control" type="number" min="1" max="28" name="day_of_month" required
+           value="{{ rule.day_of_month if rule else 1 }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Inicio</label>
+    <input class="form-control" type="date" name="start_date" required
+           value="{{ (rule.start_date if rule else today).isoformat() }}">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Fin (opcional)</label>
+    <input class="form-control" type="date" name="end_date" value="{{ rule.end_date.isoformat() if rule and rule.end_date else '' }}">
+  </div>
+  <div class="col-md-3 form-check ms-3 mt-4">
+    <input class="form-check-input" type="checkbox" name="active" id="active" {% if not rule or rule.active %}checked{% endif %}>
+    <label class="form-check-label" for="active">Activa</label>
+  </div>
+  <div class="col-12">
+    <label class="form-label">Notas</label>
+    <textarea class="form-control" name="notes" rows="2">{{ rule.notes if rule else '' }}</textarea>
+  </div>
+  <div class="col-12">
+    <button class="btn btn-primary">Guardar</button>
+    <a class="btn btn-link" href="{{ url_for('recurring.list_rules') }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

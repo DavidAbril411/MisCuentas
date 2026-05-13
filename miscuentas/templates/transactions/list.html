@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <h2>Movimientos</h2>
+  <a class="btn btn-primary" href="{{ url_for('transactions.new') }}">Nuevo movimiento</a>
+</div>
+<form class="row g-2 mb-3">
+  <div class="col-md-3"><input class="form-control" type="month" name="month" value="{{ month or '' }}" placeholder="YYYY-MM"></div>
+  <div class="col-md-3"><select class="form-select" name="account_id">
+    <option value="">Todas las cuentas</option>
+    {% for a in accounts %}<option value="{{ a.id }}" {% if account_id==a.id %}selected{% endif %}>{{ a.name }}</option>{% endfor %}
+  </select></div>
+  <div class="col-md-2"><select class="form-select" name="kind">
+    <option value="">Todo tipo</option>
+    <option value="income" {% if kind=='income' %}selected{% endif %}>Ingreso</option>
+    <option value="expense" {% if kind=='expense' %}selected{% endif %}>Gasto</option>
+  </select></div>
+  <div class="col-md-2"><button class="btn btn-secondary">Filtrar</button></div>
+</form>
+<table class="table table-sm">
+  <thead><tr><th>Fecha</th><th>Cuenta</th><th>Tipo</th><th>Descripción</th><th class="text-end">Monto</th><th class="text-end">FX</th><th></th></tr></thead>
+  <tbody>
+  {% for tx in txs %}
+    <tr>
+      <td>{{ tx.occurred_on.strftime("%d-%m-%Y") }}</td>
+      <td>{{ tx.account.name }}</td>
+      <td>
+        {% if tx.kind == 'income' %}<span class="badge bg-success">Ingreso</span>
+        {% elif tx.kind == 'expense' %}<span class="badge bg-danger">Gasto</span>
+        {% else %}<span class="badge bg-secondary">{{ tx.kind }}</span>{% endif %}
+        {% if tx.recurring_rule_id %}<span class="badge bg-info">Recurrente</span>{% endif %}
+        {% if tx.debt_id %}<span class="badge bg-warning text-dark">Deuda</span>{% endif %}
+      </td>
+      <td>{{ tx.description or "" }}</td>
+      <td class="text-end text-mono {{ 'money-pos' if tx.kind=='income' else 'money-neg' }}">
+        {{ tx.amount_minor | money(tx.currency) }}
+      </td>
+      <td class="text-end small-muted">
+        {% if tx.fx_rate_to_ars_micro %}1 USD = {{ tx.fx_rate_to_ars_micro / 1000000 }}{% else %}—{% endif %}
+      </td>
+      <td>
+        {% if not tx.recurring_rule_id and not tx.debt_id %}
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('transactions.edit', tx_id=tx.id) }}">Editar</a>
+          <form style="display:inline" method="post" action="{{ url_for('transactions.delete', tx_id=tx.id) }}" onsubmit="return confirm('¿Borrar?')">
+            <button class="btn btn-sm btn-outline-danger">Borrar</button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

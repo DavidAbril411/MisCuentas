@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <h2>Deudas</h2>
+  <a class="btn btn-primary" href="{{ url_for('debts.new') }}">Nueva deuda</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-6">
+    <h4>A cobrar</h4>
+    {% if receivables %}
+    <table class="table table-sm">
+      <thead><tr><th>De</th><th>Vence</th><th class="text-end">Pendiente</th><th></th></tr></thead>
+      {% for s in receivables %}
+      <tr>
+        <td>{{ s.debt.counterparty }} {% if s.debt.status=='partial' %}<span class="badge bg-info">parcial</span>{% endif %}</td>
+        <td>{{ s.debt.due_on.strftime("%d-%m-%Y") if s.debt.due_on else "—" }}</td>
+        <td class="text-end text-mono">{{ s.outstanding_minor | money(s.debt.currency) }}
+          <div class="small-muted">≈ {{ s.outstanding_ars_minor | ars }}</div></td>
+        <td>
+          <a class="btn btn-sm btn-outline-success" href="{{ url_for('debts.pay', debt_id=s.debt.id) }}">Cobrar</a>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('debts.edit', debt_id=s.debt.id) }}">Editar</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="small-muted">Nada por cobrar.</p>{% endif %}
+  </div>
+
+  <div class="col-md-6">
+    <h4>A pagar</h4>
+    {% if payables %}
+    <table class="table table-sm">
+      <thead><tr><th>A</th><th>Vence</th><th class="text-end">Pendiente</th><th></th></tr></thead>
+      {% for s in payables %}
+      <tr>
+        <td>{{ s.debt.counterparty }} {% if s.debt.status=='partial' %}<span class="badge bg-info">parcial</span>{% endif %}</td>
+        <td>{{ s.debt.due_on.strftime("%d-%m-%Y") if s.debt.due_on else "—" }}</td>
+        <td class="text-end text-mono">{{ s.outstanding_minor | money(s.debt.currency) }}
+          <div class="small-muted">≈ {{ s.outstanding_ars_minor | ars }}</div></td>
+        <td>
+          <a class="btn btn-sm btn-outline-danger" href="{{ url_for('debts.pay', debt_id=s.debt.id) }}">Pagar</a>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('debts.edit', debt_id=s.debt.id) }}">Editar</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="small-muted">Nada por pagar.</p>{% endif %}
+  </div>
+</div>
+
+{% if settled %}
+<h4 class="mt-4">Saldadas recientes</h4>
+<table class="table table-sm">
+  <thead><tr><th>Contraparte</th><th>Dirección</th><th class="text-end">Principal</th></tr></thead>
+  {% for d in settled %}
+  <tr><td>{{ d.counterparty }}</td><td>{{ d.direction }}</td>
+      <td class="text-end text-mono">{{ d.principal_minor | money(d.currency) }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

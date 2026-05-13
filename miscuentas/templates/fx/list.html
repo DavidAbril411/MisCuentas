@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <h2>Historial de cotización USD/ARS</h2>
+  <a class="btn btn-primary" href="{{ url_for('fx.new') }}">Nueva cotización</a>
+</div>
+<p class="small-muted">Editar una cotización <strong>no afecta los snapshots históricos</strong>: cada movimiento o deuda en USD guarda la cotización que tenía cuando se creó.</p>
+<table class="table">
+  <thead><tr><th>Fecha efectiva</th><th class="text-end">1 USD = (ARS)</th><th>Fuente</th></tr></thead>
+  <tbody>
+  {% for r in rates %}
+    <tr>
+      <td>{{ r.effective_on.strftime("%d-%m-%Y") }}</td>
+      <td class="text-end text-mono">{{ r.rate_to_ars_micro / 1000000 }}</td>
+      <td>{{ r.source or "" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
