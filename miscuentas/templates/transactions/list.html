@@ -39,12 +39,10 @@
         {% if tx.fx_rate_to_ars_micro %}1 USD = {{ tx.fx_rate_to_ars_micro / 1000000 }}{% else %}—{% endif %}
       </td>
       <td>
-        {% if not tx.recurring_rule_id and not tx.debt_id %}
-          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('transactions.edit', tx_id=tx.id) }}">Editar</a>
-          <form style="display:inline" method="post" action="{{ url_for('transactions.delete', tx_id=tx.id) }}" onsubmit="return confirm('¿Borrar?')">
-            <button class="btn btn-sm btn-outline-danger">Borrar</button>
-          </form>
-        {% endif %}
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('transactions.edit', tx_id=tx.id) }}">Editar</a>
+        <form style="display:inline" method="post" action="{{ url_for('transactions.delete', tx_id=tx.id) }}" onsubmit="return confirm('¿Borrar este movimiento?')">
+          <button class="btn btn-sm btn-outline-danger">Borrar</button>
+        </form>
       </td>
     </tr>
   {% endfor %}

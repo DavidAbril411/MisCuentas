@@ -94,6 +94,18 @@ def pay(debt_id):
     if request.method == "POST":
         amount_minor = to_minor(request.form["amount"])
         currency = debt.currency
+        account_id = int(request.form["account_id"])
+        acc = session.get(Account, account_id)
+        if acc is None or acc.currency != currency:
+            flash(
+                f"La cuenta elegida es {acc.currency if acc else '?'} pero la deuda es {currency}. "
+                "Elegí una cuenta en la misma moneda.",
+                "danger",
+            )
+            return render_template(
+                "debts/pay.html", debt=debt, accounts=accounts,
+                current_rate=current_rate, outstanding=outstanding, today=date.today(),
+            )
         fx_micro = None
         if currency == "USD":
             fx_in = request.form.get("fx_rate", "").strip()
@@ -101,7 +113,7 @@ def pay(debt_id):
         kind = "income" if debt.direction == "receivable" else "expense"
         tx = Transaction(
             occurred_on=_parse_date(request.form.get("occurred_on"), date.today()),
-            account_id=int(request.form["account_id"]),
+            account_id=account_id,
             kind=kind,
             amount_minor=amount_minor,
             currency=currency,

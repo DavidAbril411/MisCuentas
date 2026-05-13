@@ -95,3 +95,46 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- Triggers: la moneda de un movimiento o regla recurrente debe coincidir con
+-- la moneda de la cuenta asociada. Backstop a nivel DB.
+
+CREATE TRIGGER IF NOT EXISTS trg_tx_currency_match_insert
+BEFORE INSERT ON transactions
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT currency FROM accounts WHERE id = NEW.account_id) != NEW.currency
+        THEN RAISE(ABORT, 'La moneda del movimiento no coincide con la de la cuenta')
+    END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_tx_currency_match_update
+BEFORE UPDATE OF account_id, currency ON transactions
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT currency FROM accounts WHERE id = NEW.account_id) != NEW.currency
+        THEN RAISE(ABORT, 'La moneda del movimiento no coincide con la de la cuenta')
+    END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_rule_currency_match_insert
+BEFORE INSERT ON recurring_rules
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT currency FROM accounts WHERE id = NEW.account_id) != NEW.currency
+        THEN RAISE(ABORT, 'La moneda de la regla no coincide con la de la cuenta')
+    END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_rule_currency_match_update
+BEFORE UPDATE OF account_id, currency ON recurring_rules
+FOR EACH ROW
+BEGIN
+    SELECT CASE
+        WHEN (SELECT currency FROM accounts WHERE id = NEW.account_id) != NEW.currency
+        THEN RAISE(ABORT, 'La moneda de la regla no coincide con la de la cuenta')
+    END;
+END;

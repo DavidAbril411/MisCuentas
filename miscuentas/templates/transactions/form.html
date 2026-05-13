@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>{{ 'Editar' if tx else 'Nuevo' }} movimiento</h2>
+<div class="alert alert-info small">
+  <strong>Tip:</strong> la moneda del movimiento <strong>tiene que coincidir</strong> con la moneda de la cuenta seleccionada.
+</div>
 <form method="post" class="row g-3" style="max-width: 720px;">
   <div class="col-md-4">
     <label class="form-label">Fecha</label>

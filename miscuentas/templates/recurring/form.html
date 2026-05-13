@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>{{ 'Editar' if rule else 'Nueva' }} regla recurrente</h2>
+<div class="alert alert-info small">
+  <strong>Tip:</strong> la moneda de la regla <strong>tiene que coincidir</strong> con la moneda de la cuenta.
+  Si querés que se aplique este mes, fijate que <em>desde</em> sea ≤ al día del mes que elegiste
+  (ej. día 10, desde el 1 de este mes). Si el <em>desde</em> es posterior al día, recién aplica el mes siguiente.
+</div>
 <form method="post" class="row g-3" style="max-width: 720px;">
   <div class="col-12">
     <label class="form-label">Nombre</label>

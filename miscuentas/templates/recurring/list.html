@@ -32,6 +32,10 @@
         <form style="display:inline" method="post" action="{{ url_for('recurring.toggle', rule_id=r.id) }}">
           <button class="btn btn-sm btn-outline-warning">{{ 'Pausar' if r.active else 'Reactivar' }}</button>
         </form>
+        <form style="display:inline" method="post" action="{{ url_for('recurring.delete', rule_id=r.id) }}"
+              onsubmit="return confirm('¿Borrar la regla? Los movimientos ya generados quedan como manuales.')">
+          <button class="btn btn-sm btn-outline-danger">Borrar</button>
+        </form>
       </td>
     </tr>
   {% endfor %}

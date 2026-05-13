@@ -52,13 +52,16 @@ def init_db():
     """Create schema from schema.sql. Idempotent (uses IF NOT EXISTS)."""
     engine = get_engine()
     sql = SCHEMA_PATH.read_text()
-    with engine.begin() as conn:
-        for stmt in _split_sql(sql):
-            if stmt.strip():
-                conn.exec_driver_sql(stmt)
+    raw = engine.raw_connection()
+    try:
+        raw.executescript(sql)
+        raw.commit()
+    finally:
+        raw.close()
 
 
 def _split_sql(sql: str):
+    """Legacy splitter kept for reference; init_db now uses executescript."""
     out = []
     buf = []
     for line in sql.splitlines():
