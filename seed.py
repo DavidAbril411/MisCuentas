@@ -60,8 +60,14 @@ def run(session=None):
             currency="USD",
             opening_balance_minor=0,
         )
+        efectivo = Account(
+            name="Efectivo",
+            currency="ARS",
+            opening_balance_minor=0,
+        )
         session.add(billetera)
         session.add(cuenta_usd)
+        session.add(efectivo)
         session.flush()
 
         # 4. Deudas (receivables)

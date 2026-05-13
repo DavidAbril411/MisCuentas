@@ -6,7 +6,7 @@ from miscuentas.models import Meta, Account, Debt, RecurringRule, FxRate
 def test_seed_loads_expected_rows(seeded_session):
     s = seeded_session
     assert s.query(Meta).filter_by(key="seeded_v1").one_or_none() is not None
-    assert s.query(Account).count() == 2
+    assert s.query(Account).count() == 3
     assert s.query(Debt).count() == 4
     assert s.query(RecurringRule).count() == 7
     assert s.query(FxRate).count() == 1
@@ -20,6 +20,6 @@ def test_seed_idempotent(seeded_session):
     seed_mod.run(session=seeded_session)
     seed_mod.run(session=seeded_session)
     # Counts unchanged
-    assert seeded_session.query(Account).count() == 2
+    assert seeded_session.query(Account).count() == 3
     assert seeded_session.query(Debt).count() == 4
     assert seeded_session.query(RecurringRule).count() == 7
