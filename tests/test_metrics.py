@@ -62,7 +62,7 @@ def test_net_worth_with_seed(seeded_session):
 
 
 def test_monthly_flow_with_seed(seeded_session):
-    inc, exp, net = monthly_recurring_flow(seeded_session, today=date(2026, 5, 13))
+    inc, exp, net = monthly_recurring_flow(seeded_session, today=date(2026, 7, 1))
     # ingresos: 500 USD + 20 USD + 25k ARS = 520*1400 + 25000 = 753000
     assert inc == to_minor("753000")
     # gastos: 80k ARS + 20+10+50 USD = 80000 + 80*1400 = 80000 + 112000 = 192000

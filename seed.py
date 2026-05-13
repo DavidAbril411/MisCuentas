@@ -104,8 +104,9 @@ def run(session=None):
             notes="Pagar lo antes posible",
         ))
 
-        # 5. Reglas recurrentes (start_date=2026-05-01)
-        start = date(2026, 5, 1)
+        # 5. Reglas recurrentes (arrancan en junio: mayo ya está reflejado
+        # en el saldo actual de la billetera).
+        start = date(2026, 6, 1)
         rules = [
             ("Clases de batería",          "expense", "80000",  "ARS", billetera,  cats["Música"],        10),
             ("Sueldo Orion",                "income",  "500",    "USD", cuenta_usd, cats["Sueldo"],         5),
