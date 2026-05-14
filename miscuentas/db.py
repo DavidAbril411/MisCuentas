@@ -17,6 +17,9 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 def _enable_fk(dbapi_conn, _):
     cur = dbapi_conn.cursor()
     cur.execute("PRAGMA foreign_keys = ON")
+    cur.execute("PRAGMA journal_mode = WAL")
+    cur.execute("PRAGMA synchronous = NORMAL")
+    cur.execute("PRAGMA busy_timeout = 5000")
     cur.close()
 
 

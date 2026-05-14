@@ -1,5 +1,6 @@
 from datetime import date, datetime
-from flask import Blueprint, render_template, request, redirect, url_for, g, flash
+from flask import Blueprint, render_template, request, redirect, url_for, g, flash, abort
+from flask_login import login_required, current_user
 from sqlalchemy import select
 
 from ..models import Account, Debt, Transaction
@@ -10,6 +11,13 @@ from ..metrics import open_debts, debt_outstanding
 bp = Blueprint("debts", __name__)
 
 
+def _own_debt(session, debt_id: int) -> Debt | None:
+    d = session.get(Debt, debt_id)
+    if d is None or d.user_id != current_user.id:
+        return None
+    return d
+
+
 def _parse_date(s, default=None):
     if not s:
         return default
@@ -17,19 +25,24 @@ def _parse_date(s, default=None):
 
 
 @bp.route("")
+@login_required
 def list_debts():
-    recv, pay = open_debts(g.session)
+    uid = current_user.id
+    recv, pay = open_debts(g.session, uid)
     settled = g.session.execute(
-        select(Debt).where(Debt.status == "settled").order_by(Debt.id.desc()).limit(20)
+        select(Debt).where(Debt.user_id == uid, Debt.status == "settled")
+        .order_by(Debt.id.desc()).limit(20)
     ).scalars().all()
     return render_template("debts/list.html", receivables=recv, payables=pay, settled=settled)
 
 
 @bp.route("/new", methods=["GET", "POST"])
+@login_required
 def new():
     session = g.session
+    uid = current_user.id
     try:
-        current_rate = fx_from_micro(current_rate_micro(session))
+        current_rate = fx_from_micro(current_rate_micro(session, uid))
     except RuntimeError:
         current_rate = None
     if request.method == "POST":
@@ -37,8 +50,9 @@ def new():
         fx_micro = None
         if currency == "USD":
             fx_in = request.form.get("fx_rate", "").strip()
-            fx_micro = fx_to_micro(fx_in) if fx_in else current_rate_micro(session)
+            fx_micro = fx_to_micro(fx_in) if fx_in else current_rate_micro(session, uid)
         debt = Debt(
+            user_id=uid,
             counterparty=request.form["counterparty"].strip(),
             direction=request.form["direction"],
             principal_minor=to_minor(request.form["principal"]),
@@ -56,12 +70,12 @@ def new():
 
 
 @bp.route("/<int:debt_id>/edit", methods=["GET", "POST"])
+@login_required
 def edit(debt_id):
     session = g.session
-    debt = session.get(Debt, debt_id)
+    debt = _own_debt(session, debt_id)
     if debt is None:
-        flash("Deuda no encontrada", "danger")
-        return redirect(url_for("debts.list_debts"))
+        abort(404)
     if request.method == "POST":
         debt.counterparty = request.form["counterparty"].strip()
         debt.due_on = _parse_date(request.form.get("due_on"), None)
@@ -70,23 +84,24 @@ def edit(debt_id):
         session.commit()
         flash("Deuda actualizada", "success")
         return redirect(url_for("debts.list_debts"))
-    return render_template(
-        "debts/form.html", debt=debt,
+    return render_template("debts/form.html", debt=debt,
         current_rate=fx_from_micro(debt.fx_rate_to_ars_micro) if debt.fx_rate_to_ars_micro else None,
-        today=date.today(),
-    )
+        today=date.today())
 
 
 @bp.route("/<int:debt_id>/pay", methods=["GET", "POST"])
+@login_required
 def pay(debt_id):
     session = g.session
-    debt = session.get(Debt, debt_id)
+    uid = current_user.id
+    debt = _own_debt(session, debt_id)
     if debt is None:
-        flash("Deuda no encontrada", "danger")
-        return redirect(url_for("debts.list_debts"))
-    accounts = session.execute(select(Account).where(Account.archived == 0).order_by(Account.name)).scalars().all()
+        abort(404)
+    accounts = session.execute(
+        select(Account).where(Account.user_id == uid, Account.archived == 0).order_by(Account.name)
+    ).scalars().all()
     try:
-        current_rate = fx_from_micro(current_rate_micro(session))
+        current_rate = fx_from_micro(current_rate_micro(session, uid))
     except RuntimeError:
         current_rate = None
     outstanding = debt_outstanding(session, debt)
@@ -96,22 +111,21 @@ def pay(debt_id):
         currency = debt.currency
         account_id = int(request.form["account_id"])
         acc = session.get(Account, account_id)
-        if acc is None or acc.currency != currency:
+        if acc is None or acc.user_id != uid or acc.currency != currency:
             flash(
-                f"La cuenta elegida es {acc.currency if acc else '?'} pero la deuda es {currency}. "
+                f"La cuenta elegida {'no existe' if not acc else f'es {acc.currency}'} pero la deuda es {currency}. "
                 "Elegí una cuenta en la misma moneda.",
                 "danger",
             )
-            return render_template(
-                "debts/pay.html", debt=debt, accounts=accounts,
-                current_rate=current_rate, outstanding=outstanding, today=date.today(),
-            )
+            return render_template("debts/pay.html", debt=debt, accounts=accounts,
+                current_rate=current_rate, outstanding=outstanding, today=date.today())
         fx_micro = None
         if currency == "USD":
             fx_in = request.form.get("fx_rate", "").strip()
-            fx_micro = fx_to_micro(fx_in) if fx_in else current_rate_micro(session)
+            fx_micro = fx_to_micro(fx_in) if fx_in else current_rate_micro(session, uid)
         kind = "income" if debt.direction == "receivable" else "expense"
         tx = Transaction(
+            user_id=uid,
             occurred_on=_parse_date(request.form.get("occurred_on"), date.today()),
             account_id=account_id,
             kind=kind,
@@ -132,7 +146,5 @@ def pay(debt_id):
         flash("Pago registrado", "success")
         return redirect(url_for("debts.list_debts"))
 
-    return render_template(
-        "debts/pay.html", debt=debt, accounts=accounts,
-        current_rate=current_rate, outstanding=outstanding, today=date.today(),
-    )
+    return render_template("debts/pay.html", debt=debt, accounts=accounts,
+        current_rate=current_rate, outstanding=outstanding, today=date.today())

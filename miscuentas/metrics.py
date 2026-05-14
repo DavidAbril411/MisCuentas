@@ -1,14 +1,14 @@
-"""Net worth, monthly flow, projection."""
+"""Net worth, monthly flow, projection — scoped by user_id."""
 
 from __future__ import annotations
 from datetime import date
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from .models import Account, Transaction, Debt, RecurringRule
-from .money import convert_to_ars_minor, MICRO
+from .money import convert_to_ars_minor
 from .fx import current_rate_micro
 from .recurring import project_future_occurrences
 
@@ -16,15 +16,15 @@ from .recurring import project_future_occurrences
 @dataclass
 class AccountSnapshot:
     account: Account
-    balance_minor: int          # native currency
-    balance_ars_minor: int      # converted at CURRENT rate (display)
+    balance_minor: int
+    balance_ars_minor: int
 
 
 @dataclass
 class DebtSnapshot:
     debt: Debt
-    outstanding_minor: int      # native currency
-    outstanding_ars_minor: int  # at CURRENT rate
+    outstanding_minor: int
+    outstanding_ars_minor: int
 
 
 @dataclass
@@ -37,17 +37,19 @@ class NetWorth:
         return self.accounts_ars_minor + self.receivables_ars_minor - self.payables_ars_minor
 
 
-def account_balances(session: Session) -> list[AccountSnapshot]:
-    R = current_rate_micro(session)
+def account_balances(session: Session, user_id: int) -> list[AccountSnapshot]:
+    R = current_rate_micro(session, user_id)
     snaps: list[AccountSnapshot] = []
     accounts = session.execute(
-        select(Account).where(Account.archived == 0).order_by(Account.id)
+        select(Account)
+        .where(Account.user_id == user_id, Account.archived == 0)
+        .order_by(Account.id)
     ).scalars().all()
     for acc in accounts:
         bal = acc.opening_balance_minor
         rows = session.execute(
             select(Transaction.kind, func.coalesce(func.sum(Transaction.amount_minor), 0))
-            .where(Transaction.account_id == acc.id)
+            .where(Transaction.account_id == acc.id, Transaction.user_id == user_id)
             .group_by(Transaction.kind)
         ).all()
         for kind, total in rows:
@@ -68,11 +70,12 @@ def debt_outstanding(session: Session, debt: Debt) -> int:
     return max(0, debt.principal_minor - paid)
 
 
-def open_debts(session: Session) -> tuple[list[DebtSnapshot], list[DebtSnapshot]]:
-    """Returns (receivables, payables) with outstanding > 0."""
-    R = current_rate_micro(session)
+def open_debts(session: Session, user_id: int) -> tuple[list[DebtSnapshot], list[DebtSnapshot]]:
+    R = current_rate_micro(session, user_id)
     debts = session.execute(
-        select(Debt).where(Debt.status != "cancelled").order_by(Debt.due_on.is_(None), Debt.due_on, Debt.id)
+        select(Debt)
+        .where(Debt.user_id == user_id, Debt.status != "cancelled")
+        .order_by(Debt.due_on.is_(None), Debt.due_on, Debt.id)
     ).scalars().all()
     recv: list[DebtSnapshot] = []
     pay: list[DebtSnapshot] = []
@@ -82,18 +85,15 @@ def open_debts(session: Session) -> tuple[list[DebtSnapshot], list[DebtSnapshot]
             continue
         out_ars = convert_to_ars_minor(out, d.currency, R if d.currency == "USD" else None)
         snap = DebtSnapshot(d, out, out_ars)
-        if d.direction == "receivable":
-            recv.append(snap)
-        else:
-            pay.append(snap)
+        (recv if d.direction == "receivable" else pay).append(snap)
     return recv, pay
 
 
-def net_worth(session: Session) -> NetWorth:
+def net_worth(session: Session, user_id: int) -> NetWorth:
     nw = NetWorth()
-    for s in account_balances(session):
+    for s in account_balances(session, user_id):
         nw.accounts_ars_minor += s.balance_ars_minor
-    recv, pay = open_debts(session)
+    recv, pay = open_debts(session, user_id)
     for s in recv:
         nw.receivables_ars_minor += s.outstanding_ars_minor
     for s in pay:
@@ -101,12 +101,14 @@ def net_worth(session: Session) -> NetWorth:
     return nw
 
 
-def monthly_recurring_flow(session: Session, today: date | None = None) -> tuple[int, int, int]:
-    """Returns (income_ars_minor, expense_ars_minor, net_ars_minor) at CURRENT rate."""
+def monthly_recurring_flow(session: Session, user_id: int, today: date | None = None) -> tuple[int, int, int]:
     today = today or date.today()
-    R = current_rate_micro(session)
+    R = current_rate_micro(session, user_id)
     rules = session.execute(
-        select(RecurringRule).where(RecurringRule.active == 1)
+        select(RecurringRule).where(
+            RecurringRule.user_id == user_id,
+            RecurringRule.active == 1,
+        )
     ).scalars().all()
     inc = 0
     exp = 0
@@ -125,7 +127,7 @@ def monthly_recurring_flow(session: Session, today: date | None = None) -> tuple
 
 @dataclass
 class ProjectionRow:
-    month_label: str        # "2026-06"
+    month_label: str
     period_end: date
     income_ars_minor: int = 0
     expense_ars_minor: int = 0
@@ -135,22 +137,13 @@ class ProjectionRow:
     closing_nw_ars_minor: int = 0
 
 
-def projection(session: Session, n_months: int, today: date | None = None) -> list[ProjectionRow]:
-    """Project NW forward in monthly buckets. USD converted at CURRENT rate.
-    Receivables/payables with due_on within a month contribute on that month;
-    no due_on => assumed to settle in month 1 (so the user sees pressure on payables ASAP)."""
+def projection(session: Session, user_id: int, n_months: int, today: date | None = None) -> list[ProjectionRow]:
     today = today or date.today()
-    R = current_rate_micro(session)
-    nw_now = net_worth(session).total_minor
+    R = current_rate_micro(session, user_id)
+    nw_now = net_worth(session, user_id).total_minor
 
-    rows: list[ProjectionRow] = []
-    # Build month buckets
-    buckets: list[tuple[date, date, str]] = []  # (period_start, period_end, label)
-    cursor = today
+    buckets: list[tuple[date, date, str]] = []
     for i in range(n_months):
-        period_start = cursor + relativedelta(days=1) if i == 0 else cursor + relativedelta(days=1)
-        nxt = (cursor.replace(day=1) + relativedelta(months=1)) if i == 0 else (cursor + relativedelta(months=1))
-        # simpler: month-aligned buckets starting from today (exclusive)
         if i == 0:
             period_start = today + relativedelta(days=1)
             period_end = (today.replace(day=1) + relativedelta(months=1)) - relativedelta(days=1)
@@ -162,17 +155,11 @@ def projection(session: Session, n_months: int, today: date | None = None) -> li
             period_end = period_start + relativedelta(months=1) - relativedelta(days=1)
         label = period_start.strftime("%Y-%m")
         buckets.append((period_start, period_end, label))
-        cursor = period_end
-
-    # Pre-aggregate recurring occurrences by bucket index
-    bucket_index_for = {}
-    for i, (s, e, _) in enumerate(buckets):
-        bucket_index_for[i] = (s, e)
 
     proj_rows = [ProjectionRow(month_label=lbl, period_end=e) for (_, e, lbl) in buckets]
-
     horizon = buckets[-1][1]
-    for occ, rule in project_future_occurrences(session, start=today, n_months=n_months + 1):
+
+    for occ, rule in project_future_occurrences(session, user_id, start=today, n_months=n_months + 1):
         if occ > horizon:
             continue
         for i, (s, e, _) in enumerate(buckets):
@@ -184,28 +171,21 @@ def projection(session: Session, n_months: int, today: date | None = None) -> li
                     proj_rows[i].expense_ars_minor += ars
                 break
 
-    # Debts: open ones contribute on their due_on (or bucket 0 if no due_on).
-    recv, pay = open_debts(session)
+    recv, pay = open_debts(session, user_id)
     for s in recv:
-        target_date = s.debt.due_on
-        idx = _bucket_index(buckets, target_date) if target_date else 0
-        if idx is None:
-            continue
+        idx = _bucket_index(buckets, s.debt.due_on) if s.debt.due_on else 0
+        if idx is None: continue
         proj_rows[idx].receivable_due_ars_minor += s.outstanding_ars_minor
     for s in pay:
-        target_date = s.debt.due_on
-        idx = _bucket_index(buckets, target_date) if target_date else 0
-        if idx is None:
-            continue
+        idx = _bucket_index(buckets, s.debt.due_on) if s.debt.due_on else 0
+        if idx is None: continue
         proj_rows[idx].payable_due_ars_minor += s.outstanding_ars_minor
 
     running = nw_now
     for row in proj_rows:
         row.net_change_ars_minor = (
-            row.income_ars_minor
-            - row.expense_ars_minor
-            + row.receivable_due_ars_minor
-            - row.payable_due_ars_minor
+            row.income_ars_minor - row.expense_ars_minor
+            + row.receivable_due_ars_minor - row.payable_due_ars_minor
         )
         running += row.net_change_ars_minor
         row.closing_nw_ars_minor = running

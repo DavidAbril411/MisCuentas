@@ -1,10 +1,11 @@
 from datetime import date
 from flask import Flask, g
+from flask_login import current_user
 
 from .config import Config
 from .db import init_engine, init_db, get_session, shutdown_session
 from .recurring import materialize_recurring
-from .money import format_money, from_minor, convert_to_ars_minor
+from .money import format_money, from_minor
 
 
 def create_app(config_overrides: dict | None = None) -> Flask:
@@ -18,12 +19,15 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     init_engine(url)
     init_db()
 
+    from .auth import login_manager, bp as auth_bp
+    login_manager.init_app(app)
+
     @app.before_request
     def _before_request():
         g.session = get_session()
-        if not app.config.get("DISABLE_AUTO_MATERIALIZE"):
+        if current_user.is_authenticated and not app.config.get("DISABLE_AUTO_MATERIALIZE"):
             try:
-                materialize_recurring(g.session, date.today())
+                materialize_recurring(g.session, current_user.id, date.today())
                 g.session.commit()
             except Exception:
                 g.session.rollback()
@@ -36,10 +40,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         finally:
             shutdown_session()
 
-    # Jinja filters
     app.jinja_env.filters["money"] = format_money
     app.jinja_env.filters["ars"] = lambda m: format_money(m, "ARS")
     app.jinja_env.filters["decimal"] = from_minor
+
+    app.register_blueprint(auth_bp)
 
     from .routes.dashboard import bp as dashboard_bp
     from .routes.accounts import bp as accounts_bp

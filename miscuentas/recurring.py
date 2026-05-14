@@ -3,7 +3,7 @@
 from __future__ import annotations
 from datetime import date
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import RecurringRule, Transaction
@@ -15,8 +15,6 @@ def _occurrence(year: int, month: int, day_of_month: int) -> date:
 
 
 def _iter_occurrences(rule: RecurringRule, up_to: date):
-    """Yield every (year, month) occurrence date for `rule` from start_date up to and
-    including `up_to`, capped by end_date."""
     end = rule.end_date or up_to
     if end > up_to:
         end = up_to
@@ -43,11 +41,12 @@ def _iter_occurrences(rule: RecurringRule, up_to: date):
             return
 
 
-def materialize_recurring(session: Session, up_to: date) -> int:
-    """Create missing transactions for every active rule from start_date to up_to.
-    Idempotent: skips any (rule_id, occurred_on) that already exists."""
+def materialize_recurring(session: Session, user_id: int, up_to: date) -> int:
     rules = session.execute(
-        select(RecurringRule).where(RecurringRule.active == 1)
+        select(RecurringRule).where(
+            RecurringRule.user_id == user_id,
+            RecurringRule.active == 1,
+        )
     ).scalars().all()
 
     created = 0
@@ -63,8 +62,9 @@ def materialize_recurring(session: Session, up_to: date) -> int:
                 continue
             fx_micro = None
             if rule.currency == "USD":
-                fx_micro = rate_at_micro(session, occ)
+                fx_micro = rate_at_micro(session, user_id, occ)
             tx = Transaction(
+                user_id=user_id,
                 occurred_on=occ,
                 account_id=rule.account_id,
                 category_id=rule.category_id,
@@ -83,13 +83,13 @@ def materialize_recurring(session: Session, up_to: date) -> int:
     return created
 
 
-def project_future_occurrences(session: Session, start: date, n_months: int):
-    """Generator: yields (occurred_on, rule) for every active rule occurrence in
-    the projection window (start, start+n_months] - i.e. strictly after `start`.
-    Used by metrics.projection(); does NOT touch the DB."""
+def project_future_occurrences(session: Session, user_id: int, start: date, n_months: int):
     horizon = start + relativedelta(months=n_months)
     rules = session.execute(
-        select(RecurringRule).where(RecurringRule.active == 1)
+        select(RecurringRule).where(
+            RecurringRule.user_id == user_id,
+            RecurringRule.active == 1,
+        )
     ).scalars().all()
     for rule in rules:
         end = rule.end_date or horizon
@@ -97,7 +97,6 @@ def project_future_occurrences(session: Session, start: date, n_months: int):
             end = horizon
         cur_y = max(rule.start_date.year, start.year)
         cur_m = max(rule.start_date.month, start.month) if cur_y == start.year else 1
-        # back up if needed
         if (cur_y, cur_m) < (rule.start_date.year, rule.start_date.month):
             cur_y, cur_m = rule.start_date.year, rule.start_date.month
         while True:
