@@ -17,12 +17,13 @@ emitamos el cert.
 
 **Lo que necesito que hagas en el server**:
 
-1. Emitir cert Let's Encrypt para `cuentas.abrilcodes.com`:
+1. Webroot para el challenge de Let's Encrypt (si no existe ya):
    ```bash
-   sudo certbot certonly --webroot -w /var/www/letsencrypt -d cuentas.abrilcodes.com
+   sudo mkdir -p /var/www/letsencrypt/.well-known/acme-challenge
    ```
 
-2. Levantar el contenedor.  El repo trae todo: `Dockerfile`, `docker-compose.yml`, `gunicorn.conf.py`.
+2. Clonar y levantar el contenedor.  El repo trae todo: `Dockerfile`,
+   `docker-compose.yml`, `gunicorn.conf.py`.
    ```bash
    sudo mkdir -p /srv/miscuentas && sudo chown $USER /srv/miscuentas
    cd /srv/miscuentas
@@ -35,16 +36,35 @@ emitamos el cert.
    ```
    El contenedor escucha en `127.0.0.1:5001` (sólo loopback).
 
-3. Reverse proxy de nginx — copio el vhost listo en `deploy/nginx-cuentas.conf` del repo:
+3. Bootstrap nginx (sólo HTTP-80, para que certbot pueda escribir el
+   challenge). Es un archivo aparte en el repo, no hace falta editar nada
+   a mano:
    ```bash
-   sudo cp /srv/miscuentas/deploy/nginx-cuentas.conf /etc/nginx/sites-available/cuentas.abrilcodes.com
-   sudo ln -s /etc/nginx/sites-available/cuentas.abrilcodes.com /etc/nginx/sites-enabled/
+   sudo cp /srv/miscuentas/deploy/nginx-cuentas-bootstrap.conf \
+           /srv/nginx/conf.d/cuentas.abrilcodes.com.conf
    sudo nginx -t && sudo systemctl reload nginx
    ```
-   Usa el mismo `options-ssl-nginx.conf` y `ssl-dhparams.pem` que Cappy.
 
-Cuando esté arriba, `https://cuentas.abrilcodes.com/login` debería responder 200.
-El usuario inicial es `davidabril01` / `Admin123` (cambio la pass después del primer login).
+4. Emitir el cert vía webroot:
+   ```bash
+   sudo certbot certonly --webroot -w /var/www/letsencrypt -d cuentas.abrilcodes.com
+   ```
+
+5. Pisar el bootstrap con la config completa (HTTP→HTTPS + reverse proxy):
+   ```bash
+   sudo cp /srv/miscuentas/deploy/nginx-cuentas.conf \
+           /srv/nginx/conf.d/cuentas.abrilcodes.com.conf
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+   Reusa el mismo `options-ssl-nginx.conf` y `ssl-dhparams.pem` que Cappy.
+
+6. Verificación final:
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' https://cuentas.abrilcodes.com/login   # 200
+   ```
+
+El usuario inicial es `davidabril01` / `Admin123` (cambio la pass después
+del primer login).
 
 **Cosas que **no** necesito**: ni Postgres, ni Redis, ni cron, ni mail.  La
 app guarda todo en un SQLite dentro del volumen Docker `miscuentas_data`
