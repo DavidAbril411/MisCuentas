@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
-from flask import Blueprint, render_template, request, redirect, url_for, g, flash
+from flask import Blueprint, render_template, request, redirect, url_for, g, flash, abort
+from flask_login import login_required, current_user
 from sqlalchemy import select
 
 from ..models import Account, Category, Transaction, Debt, RecurringRule
@@ -12,9 +13,16 @@ from ..recurring import materialize_recurring
 bp = Blueprint("transactions", __name__)
 
 
+def _own_tx(session, tx_id: int) -> Transaction | None:
+    tx = session.get(Transaction, tx_id)
+    if tx is None or tx.user_id != current_user.id:
+        return None
+    return tx
+
+
 def _check_account_currency(session, account_id: int, currency: str) -> str | None:
     acc = session.get(Account, account_id)
-    if acc is None:
+    if acc is None or acc.user_id != current_user.id:
         return "Cuenta inexistente."
     if acc.currency != currency:
         return (f"La cuenta '{acc.name}' es {acc.currency}; no podés cargar "
@@ -22,7 +30,7 @@ def _check_account_currency(session, account_id: int, currency: str) -> str | No
     return None
 
 
-def _refresh_debt_status(session, debt: "Debt"):
+def _refresh_debt_status(session, debt: Debt):
     out = debt_outstanding(session, debt)
     if out <= 0:
         debt.status = "settled"
@@ -33,12 +41,16 @@ def _refresh_debt_status(session, debt: "Debt"):
 
 
 @bp.route("")
+@login_required
 def list_tx():
     session = g.session
+    uid = current_user.id
     month = request.args.get("month")
     account_id = request.args.get("account_id", type=int)
     kind = request.args.get("kind")
-    q = select(Transaction).order_by(Transaction.occurred_on.desc(), Transaction.id.desc())
+    q = (select(Transaction)
+         .where(Transaction.user_id == uid)
+         .order_by(Transaction.occurred_on.desc(), Transaction.id.desc()))
     if month:
         q = q.where(Transaction.occurred_on.like(f"{month}%"))
     if account_id:
@@ -46,7 +58,9 @@ def list_tx():
     if kind:
         q = q.where(Transaction.kind == kind)
     txs = session.execute(q.limit(500)).scalars().all()
-    accounts = session.execute(select(Account).order_by(Account.name)).scalars().all()
+    accounts = session.execute(
+        select(Account).where(Account.user_id == uid).order_by(Account.name)
+    ).scalars().all()
     return render_template(
         "transactions/list.html",
         txs=txs, accounts=accounts,
@@ -55,12 +69,18 @@ def list_tx():
 
 
 @bp.route("/new", methods=["GET", "POST"])
+@login_required
 def new():
     session = g.session
-    accounts = session.execute(select(Account).where(Account.archived == 0).order_by(Account.name)).scalars().all()
-    categories = session.execute(select(Category).order_by(Category.name)).scalars().all()
+    uid = current_user.id
+    accounts = session.execute(
+        select(Account).where(Account.user_id == uid, Account.archived == 0).order_by(Account.name)
+    ).scalars().all()
+    categories = session.execute(
+        select(Category).where(Category.user_id == uid).order_by(Category.name)
+    ).scalars().all()
     try:
-        current_rate = fx_from_micro(current_rate_micro(session))
+        current_rate = fx_from_micro(current_rate_micro(session, uid))
     except RuntimeError:
         current_rate = None
 
@@ -70,22 +90,20 @@ def new():
         err = _check_account_currency(session, account_id, currency)
         if err:
             flash(err, "danger")
-            return render_template(
-                "transactions/form.html",
+            return render_template("transactions/form.html",
                 tx=None, accounts=accounts, categories=categories,
-                current_rate=current_rate, today=date.today(),
-            )
-        amount_minor = to_minor(request.form["amount"])
+                current_rate=current_rate, today=date.today())
         fx_micro = None
         if currency == "USD":
             fx_in = request.form.get("fx_rate", "").strip()
-            fx_micro = fx_to_micro(fx_in) if fx_in else current_rate_micro(session)
+            fx_micro = fx_to_micro(fx_in) if fx_in else current_rate_micro(session, uid)
         tx = Transaction(
+            user_id=uid,
             occurred_on=datetime.strptime(request.form["occurred_on"], "%Y-%m-%d").date(),
             account_id=account_id,
             category_id=int(request.form["category_id"]) if request.form.get("category_id") else None,
             kind=request.form["kind"],
-            amount_minor=amount_minor,
+            amount_minor=to_minor(request.form["amount"]),
             currency=currency,
             fx_rate_to_ars_micro=fx_micro,
             description=request.form.get("description", "").strip() or None,
@@ -95,34 +113,35 @@ def new():
         flash("Movimiento creado", "success")
         return redirect(url_for("transactions.list_tx"))
 
-    return render_template(
-        "transactions/form.html",
+    return render_template("transactions/form.html",
         tx=None, accounts=accounts, categories=categories,
-        current_rate=current_rate, today=date.today(),
-    )
+        current_rate=current_rate, today=date.today())
 
 
 @bp.route("/<int:tx_id>/edit", methods=["GET", "POST"])
+@login_required
 def edit(tx_id):
     session = g.session
-    tx = session.get(Transaction, tx_id)
+    uid = current_user.id
+    tx = _own_tx(session, tx_id)
     if tx is None:
-        flash("Movimiento no encontrado", "danger")
-        return redirect(url_for("transactions.list_tx"))
-    accounts = session.execute(select(Account).order_by(Account.name)).scalars().all()
-    categories = session.execute(select(Category).order_by(Category.name)).scalars().all()
+        abort(404)
+    accounts = session.execute(
+        select(Account).where(Account.user_id == uid).order_by(Account.name)
+    ).scalars().all()
+    categories = session.execute(
+        select(Category).where(Category.user_id == uid).order_by(Category.name)
+    ).scalars().all()
     if request.method == "POST":
         currency = request.form["currency"]
         account_id = int(request.form["account_id"])
         err = _check_account_currency(session, account_id, currency)
         if err:
             flash(err, "danger")
-            return render_template(
-                "transactions/form.html",
+            return render_template("transactions/form.html",
                 tx=tx, accounts=accounts, categories=categories,
                 current_rate=fx_from_micro(tx.fx_rate_to_ars_micro) if tx.fx_rate_to_ars_micro else None,
-                today=tx.occurred_on,
-            )
+                today=tx.occurred_on)
         tx.occurred_on = datetime.strptime(request.form["occurred_on"], "%Y-%m-%d").date()
         tx.account_id = account_id
         tx.category_id = int(request.form["category_id"]) if request.form.get("category_id") else None
@@ -131,7 +150,7 @@ def edit(tx_id):
         tx.currency = currency
         if currency == "USD":
             fx_in = request.form.get("fx_rate", "").strip()
-            tx.fx_rate_to_ars_micro = fx_to_micro(fx_in) if fx_in else current_rate_micro(session)
+            tx.fx_rate_to_ars_micro = fx_to_micro(fx_in) if fx_in else current_rate_micro(session, uid)
         else:
             tx.fx_rate_to_ars_micro = None
         tx.description = request.form.get("description", "").strip() or None
@@ -142,37 +161,40 @@ def edit(tx_id):
         session.commit()
         flash("Movimiento actualizado", "success")
         return redirect(url_for("transactions.list_tx"))
-    return render_template(
-        "transactions/form.html",
+    return render_template("transactions/form.html",
         tx=tx, accounts=accounts, categories=categories,
         current_rate=fx_from_micro(tx.fx_rate_to_ars_micro) if tx.fx_rate_to_ars_micro else None,
-        today=tx.occurred_on,
-    )
+        today=tx.occurred_on)
 
 
 @bp.route("/<int:tx_id>/delete", methods=["POST"])
+@login_required
 def delete(tx_id):
     session = g.session
-    tx = session.get(Transaction, tx_id)
+    tx = _own_tx(session, tx_id)
     if tx is None:
-        flash("Movimiento no encontrado", "danger")
-    else:
-        debt_id = tx.debt_id
-        session.delete(tx)
-        session.flush()
-        if debt_id:
-            debt = session.get(Debt, debt_id)
-            if debt is not None:
-                _refresh_debt_status(session, debt)
-        session.commit()
-        flash("Movimiento borrado", "success")
+        abort(404)
+    debt_id = tx.debt_id
+    session.delete(tx)
+    session.flush()
+    if debt_id:
+        debt = session.get(Debt, debt_id)
+        if debt is not None:
+            _refresh_debt_status(session, debt)
+    session.commit()
+    flash("Movimiento borrado", "success")
     return redirect(url_for("transactions.list_tx"))
 
 
 @bp.route("/transfer", methods=["GET", "POST"])
+@login_required
 def transfer():
     session = g.session
-    accounts = session.execute(select(Account).where(Account.archived == 0).order_by(Account.name)).scalars().all()
+    accounts = session.execute(
+        select(Account)
+        .where(Account.archived == 0, Account.user_id == current_user.id)
+        .order_by(Account.name)
+    ).scalars().all()
     if request.method == "POST":
         source_id = int(request.form["source_account_id"])
         dest_id = int(request.form["dest_account_id"])
@@ -182,14 +204,13 @@ def transfer():
         
         source = session.get(Account, source_id)
         dest = session.get(Account, dest_id)
+        if source is None or source.user_id != current_user.id or dest is None or dest.user_id != current_user.id:
+            abort(404)
+            
         occurred_on = datetime.strptime(request.form["occurred_on"], "%Y-%m-%d").date()
         amount_minor = to_minor(request.form["amount"])
         description = request.form.get("description", "").strip() or f"Transferencia de {source.name} a {dest.name}"
         
-        # If they are different currencies, we need to handle conversions.
-        # But we assume the transfer is entered in source currency.
-        # Let's check currencies. If same, amount is identical.
-        # If one is USD and the other is ARS, we can use the current exchange rate.
         rate_micro = current_rate_micro(session)
         amount_dest_minor = amount_minor
         if source.currency == "ARS" and dest.currency == "USD":
@@ -199,6 +220,7 @@ def transfer():
 
         # Source transaction (transfer_out)
         tx_out = Transaction(
+            user_id=current_user.id,
             occurred_on=occurred_on,
             account_id=source.id,
             kind="transfer_out",
@@ -209,6 +231,7 @@ def transfer():
         )
         # Destination transaction (transfer_in)
         tx_in = Transaction(
+            user_id=current_user.id,
             occurred_on=occurred_on,
             account_id=dest.id,
             kind="transfer_in",
@@ -227,10 +250,19 @@ def transfer():
 
 
 @bp.route("/new_installment", methods=["GET", "POST"])
+@login_required
 def new_installment():
     session = g.session
-    accounts = session.execute(select(Account).where(Account.archived == 0).order_by(Account.name)).scalars().all()
-    categories = session.execute(select(Category).order_by(Category.name)).scalars().all()
+    accounts = session.execute(
+        select(Account)
+        .where(Account.archived == 0, Account.user_id == current_user.id)
+        .order_by(Account.name)
+    ).scalars().all()
+    categories = session.execute(
+        select(Category)
+        .where(Category.user_id == current_user.id)
+        .order_by(Category.name)
+    ).scalars().all()
     
     if request.method == "POST":
         account_id = int(request.form["account_id"])
@@ -241,16 +273,19 @@ def new_installment():
         name = request.form["name"].strip()
         
         account = session.get(Account, account_id)
+        if account is None or account.user_id != current_user.id:
+            abort(404)
+        if category_id:
+            category = session.get(Category, category_id)
+            if category is None or category.user_id != current_user.id:
+                abort(404)
         
-        # We cap day of month to 1-28
         day_of_month = min(28, max(1, occurred_on.day))
-        
-        # Start date is the first installment
         start_date = occurred_on
-        # End date is start_date + (installments_count - 1) months
         end_date = start_date + relativedelta(months=installments_count - 1)
         
         rule = RecurringRule(
+            user_id=current_user.id,
             name=f"{name} (Cuota)",
             kind="expense",
             amount_minor=to_minor(amount_val),
@@ -266,7 +301,6 @@ def new_installment():
         session.add(rule)
         session.flush()
         
-        # Trigger immediate materialization to generate the transactions
         materialize_recurring(session, date.today())
         session.commit()
         

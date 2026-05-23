@@ -1,73 +1,71 @@
 # MisCuentas
 
-App web local para llevar cuentas personales con SQLite, multi-moneda ARS/USD,
-con snapshot del tipo de cambio en cada movimiento o deuda, ingresos y gastos
-recurrentes mensuales, deudas a cobrar y a pagar, y proyección a futuro.
+App web Flask para llevar cuentas personales con multi-moneda ARS/USD,
+snapshot del tipo de cambio en cada movimiento, ingresos/gastos recurrentes
+mensuales, deudas a cobrar y a pagar, proyección a futuro, y multi-usuario
+con autenticación.
 
 ## Stack
 
-Python 3.11+ · Flask · SQLAlchemy 2 · Jinja2 · Bootstrap 5 (CDN) · SQLite ·
-python-dateutil · pytest. Toda la plata se guarda como enteros en unidades
-menores (centavos / cents). El FX se guarda como entero micro-ARS por 1 USD.
+Python 3.11+ · Flask · Flask-Login · SQLAlchemy 2 · Jinja2 · Bootstrap 5
+(CDN) · SQLite (WAL) · python-dateutil · gunicorn · pytest.  Todo el dinero
+se guarda como enteros en unidades menores (centavos / cents).
 
-## Cómo correrlo
+## Correr en local
 
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python seed.py        # crea miscuentas.db con tu situación inicial (idempotente)
+python seed.py        # idempotente; crea usuario davidabril01 / Admin123
 python run.py         # http://127.0.0.1:5000
-pytest -q             # tests con DB in-memory
+pytest -q             # 29 tests
 ```
 
-La app sólo escucha en `127.0.0.1`. No tiene auth: es para uso local.
+Después de logearte, podés cambiar la contraseña desde el menú del usuario.
+Otros usuarios se pueden registrar en `/register`.
 
-## Datos iniciales (al 13-may-2026)
+## Deploy en producción
 
-- Billetera virtual: 694.000 ARS
-- A cobrar: Orion 350.000 ARS (15-may), Padres 200 USD, Hermano 300 USD (15-jul)
-- A pagar: Padres 730.000 ARS
-- Cotización: 1 USD = 1.400 ARS
-- Reglas mensuales:
-  - Gasto ARS 80.000 (clases de batería, día 10)
-  - Ingreso USD 500 (sueldo Orion, día 5)
-  - Gasto USD 20 / 10 / 50 (Claude / OpenCode / servidor, día 1)
-  - Ingreso USD 20 (reintegro servidor Orion, día 5)
-  - Ingreso ARS 25.000 (chatbot universidad, día 15)
+Ver `DEPLOY.md`.  Stack: gunicorn + Docker tras nginx; SQLite persistente
+en un volumen.
 
-## Conceptos
+## Features
 
-- **Snapshot FX**: cada fila en USD (`transactions`, `debts`) guarda la
-  cotización al momento de su creación. Editar el historial de `fx_rates` NO
-  altera los snapshots de filas existentes — sólo afecta nuevos cálculos.
-- **Materialización**: las reglas recurrentes son plantillas. Al abrir
-  cualquier página la app genera las transacciones pendientes hasta hoy
-  (idempotente). Las del futuro se ven en la proyección sin escribirse en la
-  DB.
-- **Pago de deuda**: cuando registrás un pago contra una deuda, se crea una
-  fila en `transactions` con `debt_id` apuntando a la deuda. Eso afecta el
-  saldo de la cuenta y reduce el pendiente de la deuda en un solo movimiento.
+- **Auth**: registro, login, logout, cambio de contraseña.  Hashes PBKDF2
+  vía Werkzeug.  Sesiones con Flask-Login (`remember_me`).
+- **Multi-tenant**: cada tabla tiene `user_id NOT NULL`; las queries
+  filtran por `current_user.id` y triggers SQLite rechazan inserts
+  cross-tenant.
+- **Currency match**: triggers + checks en rutas que rechazan movimientos /
+  reglas cuya moneda no coincide con la de la cuenta.
+- **Snapshot FX**: cada fila en USD guarda la cotización del momento;
+  editar `fx_rates` no altera filas existentes.
+- **Reglas recurrentes**: materializan automáticamente al cargar
+  cualquier página (idempotente); borrables; pausables.
+- **Pagos de deuda**: una transaction con `debt_id` afecta saldo de cuenta
+  y reduce pendiente de deuda en un solo movimiento.
 
 ## Estructura
 
 ```
 miscuentas/
-  schema.sql        DDL con CHECK constraints (USD requiere FX, ARS lo prohibe)
-  models.py         ORM
-  money.py          to_minor / from_minor / convert_to_ars_minor
-  fx.py             current_rate / rate_at / set_rate
-  recurring.py      materialize + project_future_occurrences
-  metrics.py        net_worth / monthly_flow / projection
-  routes/           dashboard, accounts, transactions, recurring, debts, fx
-  templates/        Jinja + Bootstrap
-seed.py             idempotente
-run.py              python run.py
-tests/              16 tests, pytest
+  auth.py             # Flask-Login + login/register/logout/change-password
+  schema.sql          # DDL con CHECK + triggers de tenancy y currency
+  models.py           # ORM
+  money.py            # to_minor / from_minor / convert_to_ars_minor
+  fx.py               # current_rate / rate_at / set_rate  (per-user)
+  recurring.py        # materialize + project_future_occurrences (per-user)
+  metrics.py          # net_worth / monthly_flow / projection (per-user)
+  routes/             # dashboard / accounts / transactions / recurring / debts / fx
+  templates/
+    auth/             # login, register, change_password
+    ...
+seed.py               # idempotente; usuario davidabril01 + datos
+run.py                # entrypoint dev
+gunicorn.conf.py      # entrypoint prod
+Dockerfile            # multi-arch (ARM64 OK)
+docker-compose.yml    # bind 127.0.0.1:5001 → contenedor :8000
+deploy/nginx-cuentas.conf
+DEPLOY.md             # instrucciones para el devops
+tests/                # 29 tests (incluye isolation cross-tenant)
 ```
-
-## Decisiones
-
-- Día del mes capado a 1–28 en reglas recurrentes (evita febrero).
-- FX para fechas pasadas: nearest-on-or-before, fallback a la primera registrada.
-- La proyección a futuro asume el dólar constante (al valor actual).
-- Deudas sin fecha de vencimiento se asignan al primer bucket en la proyección.

@@ -70,12 +70,13 @@
 <body>
 <nav class="navbar navbar-expand-lg bg-dark navbar-dark mb-4 py-3 shadow-sm">
   <div class="container">
-    <a class="navbar-brand fs-4" href="{{ url_for('dashboard.index') }}">✨ MisCuentas</a>
+    <a class="navbar-brand fs-4" href="{{ url_for('dashboard.index') if current_user.is_authenticated else url_for('auth.login') }}">✨ MisCuentas</a>
+    {% if current_user.is_authenticated %}
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="navbarNav">
-      <ul class="navbar-nav ms-auto gap-1 mt-2 mt-lg-0">
+      <ul class="navbar-nav ms-auto gap-1 mt-2 mt-lg-0 align-items-lg-center">
         <li class="nav-item">
           <a class="nav-link px-3 rounded-3" href="{{ url_for('dashboard.index') }}">Dashboard</a>
         </li>
@@ -94,11 +95,26 @@
         <li class="nav-item">
           <a class="nav-link px-3 rounded-3" href="{{ url_for('debts.list_debts') }}">Deudas</a>
         </li>
-        <li class="nav-item">
+        <li class="nav-item me-lg-2">
           <a class="nav-link px-3 rounded-3" href="{{ url_for('fx.list_rates') }}">Cotización</a>
+        </li>
+        <li class="nav-item dropdown">
+          <button class="btn btn-outline-light dropdown-toggle btn-sm w-100 text-start text-lg-center mt-2 mt-lg-0" data-bs-toggle="dropdown">
+            👤 {{ current_user.username }}
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="{{ url_for('auth.change_password') }}">Cambiar contraseña</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <form method="post" action="{{ url_for('auth.logout') }}" class="m-0">
+                <button class="dropdown-item">Cerrar sesión</button>
+              </form>
+            </li>
+          </ul>
         </li>
       </ul>
     </div>
+    {% endif %}
   </div>
 </nav>
 <div class="container px-3">

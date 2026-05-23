@@ -1,5 +1,7 @@
 flask>=3.0
+flask-login>=0.6.3
 sqlalchemy>=2.0
 python-dateutil>=2.9
+gunicorn>=21.2
 pytest>=8.0
 pytest-flask>=1.3

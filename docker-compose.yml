@@ -1,0 +1,23 @@
+services:
+  miscuentas:
+    container_name: miscuentas
+    build: .
+    restart: unless-stopped
+    # Bind to host loopback only; nginx on the host reverse-proxies.
+    ports:
+      - "127.0.0.1:5001:8000"
+    environment:
+      - MISCUENTAS_SECRET=${MISCUENTAS_SECRET:?MISCUENTAS_SECRET env var is required}
+      - MISCUENTAS_DB=/data/miscuentas.db
+      - GUNICORN_LOG_LEVEL=info
+    volumes:
+      - miscuentas_data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  miscuentas_data:
+    driver: local
