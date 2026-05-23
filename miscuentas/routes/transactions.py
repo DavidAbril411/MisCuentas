@@ -211,7 +211,7 @@ def transfer():
         amount_minor = to_minor(request.form["amount"])
         description = request.form.get("description", "").strip() or f"Transferencia de {source.name} a {dest.name}"
         
-        rate_micro = current_rate_micro(session)
+        rate_micro = current_rate_micro(session, current_user.id)
         amount_dest_minor = amount_minor
         if source.currency == "ARS" and dest.currency == "USD":
             amount_dest_minor = amount_minor * 1_000_000 // rate_micro
@@ -301,7 +301,7 @@ def new_installment():
         session.add(rule)
         session.flush()
         
-        materialize_recurring(session, date.today())
+        materialize_recurring(session, current_user.id, date.today())
         session.commit()
         
         flash("Compra en cuotas registrada con éxito", "success")

@@ -1,7 +1,8 @@
 import pytest
 import miscuentas.db as db_mod
 from miscuentas import create_app
-from miscuentas.models import Account, Transaction, RecurringRule, Category, FxRate
+from miscuentas.models import Account, Transaction, RecurringRule, Category, FxRate, User
+from werkzeug.security import generate_password_hash
 from datetime import date
 
 @pytest.fixture
@@ -21,10 +22,23 @@ def app():
 def client(app):
     return app.test_client()
 
+def _make_user(s, username="alice", password="password123"):
+    u = User(username=username, password_hash=generate_password_hash(password))
+    s.add(u); s.commit(); return u
+
+def _login(client, username="alice", password="password123"):
+    return client.post("/login", data={"username": username, "password": password},
+                       follow_redirects=False)
+
 def test_credit_card_account_creation(client):
     s = db_mod.get_session()
-    s.add(FxRate(effective_on=date(2026, 5, 22), rate_to_ars_micro=1400000000))
+    u = _make_user(s)
+    u_id = u.id
+    s.add(FxRate(user_id=u_id, effective_on=date(2026, 5, 22), rate_to_ars_micro=1400000000))
     s.commit()
+    db_mod.shutdown_session()
+    
+    _login(client)
     # Create an account via POST
     resp = client.post("/accounts/new", data={
         "name": "Tarjeta Naranja Test",
@@ -34,23 +48,28 @@ def test_credit_card_account_creation(client):
     }, follow_redirects=True)
     assert resp.status_code == 200
     
+    s = db_mod.get_session()
     # Verify in DB
     acc = s.query(Account).filter_by(name="Tarjeta Naranja Test").first()
     assert acc is not None
     assert acc.is_credit_card == 1
     assert acc.currency == "ARS"
+    assert acc.user_id == u_id
 
 def test_transfer_creation(client):
     s = db_mod.get_session()
-    s.add(FxRate(effective_on=date(2026, 5, 22), rate_to_ars_micro=1400000000))
-    src = Account(name="Bancor Test", currency="ARS", opening_balance_minor=100000)
-    dest = Account(name="Tarjeta Test", currency="ARS", opening_balance_minor=0, is_credit_card=1)
+    u = _make_user(s)
+    u_id = u.id
+    s.add(FxRate(user_id=u_id, effective_on=date(2026, 5, 22), rate_to_ars_micro=1400000000))
+    src = Account(user_id=u_id, name="Bancor Test", currency="ARS", opening_balance_minor=100000)
+    dest = Account(user_id=u_id, name="Tarjeta Test", currency="ARS", opening_balance_minor=0, is_credit_card=1)
     s.add(src)
     s.add(dest)
     s.commit()
     src_id, dest_id = src.id, dest.id
     db_mod.shutdown_session()
     
+    _login(client)
     resp = client.post("/transactions/transfer", data={
         "occurred_on": "2026-05-22",
         "source_account_id": str(src_id),
@@ -71,17 +90,21 @@ def test_transfer_creation(client):
     assert tx_out.amount_minor == 50000
     assert tx_out.currency == "ARS"
     assert tx_out.description == "Pago de tarjeta"
+    assert tx_out.user_id == u_id
     
     assert tx_in.account_id == dest_id
     assert tx_in.amount_minor == 50000
     assert tx_in.currency == "ARS"
     assert tx_in.description == "Pago de tarjeta"
+    assert tx_in.user_id == u_id
 
 def test_new_installment_creation(client):
     s = db_mod.get_session()
-    s.add(FxRate(effective_on=date(2026, 5, 22), rate_to_ars_micro=1400000000))
-    acc = Account(name="Tarjeta Cuotas Test", currency="ARS", opening_balance_minor=0, is_credit_card=1)
-    cat = Category(name="Compras Test", kind="expense")
+    u = _make_user(s)
+    u_id = u.id
+    s.add(FxRate(user_id=u_id, effective_on=date(2026, 5, 22), rate_to_ars_micro=1400000000))
+    acc = Account(user_id=u_id, name="Tarjeta Cuotas Test", currency="ARS", opening_balance_minor=0, is_credit_card=1)
+    cat = Category(user_id=u_id, name="Compras Test", kind="expense")
     s.add(acc)
     s.add(cat)
     s.commit()
@@ -89,6 +112,7 @@ def test_new_installment_creation(client):
     cat_id = cat.id
     db_mod.shutdown_session()
     
+    _login(client)
     resp = client.post("/transactions/new_installment", data={
         "name": "Botas Test",
         "occurred_on": "2026-06-01",
@@ -107,15 +131,18 @@ def test_new_installment_creation(client):
     assert rule.category_id == cat_id
     assert rule.start_date.isoformat() == "2026-06-01"
     assert rule.end_date.isoformat() == "2026-11-01" # 6 months: Jun, Jul, Aug, Sep, Oct, Nov
+    assert rule.user_id == u_id
 
 def test_mensual_grid_renders(client):
     s = db_mod.get_session()
-    s.add(FxRate(effective_on=date(2026, 5, 22), rate_to_ars_micro=1400000000))
-    acc = Account(name="Bancor Mensual", currency="ARS", is_credit_card=0)
+    u = _make_user(s)
+    s.add(FxRate(user_id=u.id, effective_on=date(2026, 5, 22), rate_to_ars_micro=1400000000))
+    acc = Account(user_id=u.id, name="Bancor Mensual", currency="ARS", is_credit_card=0)
     s.add(acc)
     s.commit()
     db_mod.shutdown_session()
     
+    _login(client)
     resp = client.get("/mensual")
     assert resp.status_code == 200
     assert b"Planificaci" in resp.data

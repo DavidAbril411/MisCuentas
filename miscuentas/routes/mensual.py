@@ -1,6 +1,7 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 from flask import Blueprint, render_template, g
+from flask_login import login_required, current_user
 from sqlalchemy import select
 
 from ..models import Account, RecurringRule, Category
@@ -11,10 +12,11 @@ bp = Blueprint("mensual", __name__)
 
 
 @bp.route("")
+@login_required
 def grid():
     session = g.session
     try:
-        rate_micro = current_rate_micro(session)
+        rate_micro = current_rate_micro(session, current_user.id)
     except RuntimeError:
         return render_template("no_fx.html")
     
@@ -28,13 +30,21 @@ def grid():
         for m in months
     ]
     
-    # Fetch all accounts
-    accounts = session.execute(select(Account).where(Account.archived == 0).order_by(Account.name)).scalars().all()
+    # Fetch all accounts for current user
+    accounts = session.execute(
+        select(Account)
+        .where(Account.archived == 0, Account.user_id == current_user.id)
+        .order_by(Account.name)
+    ).scalars().all()
     credit_cards = [a for a in accounts if a.is_credit_card]
     bank_accounts = [a for a in accounts if not a.is_credit_card]
     
-    # Fetch all recurring rules
-    rules = session.execute(select(RecurringRule).where(RecurringRule.active == 1).order_by(RecurringRule.name)).scalars().all()
+    # Fetch all recurring rules for current user
+    rules = session.execute(
+        select(RecurringRule)
+        .where(RecurringRule.active == 1, RecurringRule.user_id == current_user.id)
+        .order_by(RecurringRule.name)
+    ).scalars().all()
     
     # We will build rows for three tables:
     # 1. Credit Card rules/installments

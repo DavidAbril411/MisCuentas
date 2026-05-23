@@ -2,6 +2,7 @@ import sqlite3
 import openpyxl
 from datetime import datetime, date
 import os
+from werkzeug.security import generate_password_hash
 
 excel_path = "/Users/davidabrilperrig/dev/MisCuentas/cuentas 2026 Erica (1).xlsx"
 if not os.path.exists(excel_path):
@@ -23,7 +24,21 @@ def migrate_db():
         conn.commit()
     conn.close()
 
-def create_accounts(conn):
+def get_or_create_erica_user(conn):
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE username = 'Erica'")
+    row = cur.fetchone()
+    if row:
+        print("User 'Erica' already exists.")
+        return row[0]
+    else:
+        password_hash = generate_password_hash("Erica12345")
+        cur.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", ("Erica", password_hash))
+        conn.commit()
+        print("Created user: Erica (password: Erica12345)")
+        return cur.lastrowid
+
+def create_accounts(conn, user_id):
     cur = conn.cursor()
     # Check and insert accounts
     accounts = [
@@ -34,7 +49,7 @@ def create_accounts(conn):
     ]
     account_ids = {}
     for name, currency, is_cc in accounts:
-        cur.execute("SELECT id FROM accounts WHERE name = ?", (name,))
+        cur.execute("SELECT id FROM accounts WHERE name = ? AND user_id = ?", (name, user_id))
         row = cur.fetchone()
         if row:
             account_ids[name] = row[0]
@@ -42,15 +57,15 @@ def create_accounts(conn):
             cur.execute("UPDATE accounts SET is_credit_card = ? WHERE id = ?", (is_cc, row[0]))
         else:
             cur.execute(
-                "INSERT INTO accounts (name, currency, opening_balance_minor, is_credit_card) VALUES (?, ?, 0, ?)",
-                (name, currency, is_cc)
+                "INSERT INTO accounts (user_id, name, currency, opening_balance_minor, is_credit_card) VALUES (?, ?, ?, 0, ?)",
+                (user_id, name, currency, is_cc)
             )
             account_ids[name] = cur.lastrowid
-            print(f"Created account: {name} (Credit Card: {is_cc})")
+            print(f"Created account: {name} for Erica (Credit Card: {is_cc})")
     conn.commit()
     return account_ids
 
-def create_categories(conn):
+def create_categories(conn, user_id):
     cur = conn.cursor()
     categories = [
         ("Servicios Tarjeta", "expense"),
@@ -62,23 +77,23 @@ def create_categories(conn):
     ]
     cat_ids = {}
     for name, kind in categories:
-        cur.execute("SELECT id FROM categories WHERE name = ?", (name,))
+        cur.execute("SELECT id FROM categories WHERE name = ? AND user_id = ?", (name, user_id))
         row = cur.fetchone()
         if row:
             cat_ids[name] = row[0]
         else:
-            cur.execute("INSERT INTO categories (name, kind) VALUES (?, ?)", (name, kind))
+            cur.execute("INSERT INTO categories (user_id, name, kind) VALUES (?, ?, ?)", (user_id, name, kind))
             cat_ids[name] = cur.lastrowid
-            print(f"Created category: {name} ({kind})")
+            print(f"Created category: {name} for Erica ({kind})")
     conn.commit()
     return cat_ids
 
-def add_recurring_rule(conn, name, kind, amount_ars, account_id, category_id, day, start_dt, end_dt, notes=""):
+def add_recurring_rule(conn, user_id, name, kind, amount_ars, account_id, category_id, day, start_dt, end_dt, notes=""):
     cur = conn.cursor()
     # Check if a rule with this name and account already exists to avoid duplicates
     cur.execute(
-        "SELECT id FROM recurring_rules WHERE name = ? AND account_id = ? AND start_date = ?",
-        (name, account_id, start_dt.isoformat())
+        "SELECT id FROM recurring_rules WHERE name = ? AND account_id = ? AND start_date = ? AND user_id = ?",
+        (name, account_id, start_dt.isoformat(), user_id)
     )
     row = cur.fetchone()
     amount_minor = int(float(amount_ars) * 100)
@@ -93,39 +108,40 @@ def add_recurring_rule(conn, name, kind, amount_ars, account_id, category_id, da
     else:
         cur.execute(
             """INSERT INTO recurring_rules 
-               (name, kind, amount_minor, currency, account_id, category_id, day_of_month, start_date, end_date, active, notes)
-               VALUES (?, ?, ?, 'ARS', ?, ?, ?, ?, ?, 1, ?)""",
-            (name, kind, amount_minor, account_id, category_id, day, start_dt.isoformat(), end_dt.isoformat() if end_dt else None, notes)
+               (user_id, name, kind, amount_minor, currency, account_id, category_id, day_of_month, start_date, end_date, active, notes)
+               VALUES (?, ?, ?, ?, 'ARS', ?, ?, ?, ?, ?, 1, ?)""",
+            (user_id, name, kind, amount_minor, account_id, category_id, day, start_dt.isoformat(), end_dt.isoformat() if end_dt else None, notes)
         )
-        print(f"Added recurring rule: {name} ({amount_ars} ARS, Account ID: {account_id})")
+        print(f"Added recurring rule for Erica: {name} ({amount_ars} ARS, Account ID: {account_id})")
     conn.commit()
 
-def add_transaction(conn, occurred_on, name, amount_ars, account_id, category_id, notes=""):
+def add_transaction(conn, user_id, occurred_on, name, amount_ars, account_id, category_id, notes=""):
     cur = conn.cursor()
     # Check if transaction already exists
     cur.execute(
-        "SELECT id FROM transactions WHERE occurred_on = ? AND account_id = ? AND description = ?",
-        (occurred_on.isoformat(), account_id, name)
+        "SELECT id FROM transactions WHERE occurred_on = ? AND account_id = ? AND description = ? AND user_id = ?",
+        (occurred_on.isoformat(), account_id, name, user_id)
     )
     row = cur.fetchone()
     amount_minor = int(float(amount_ars) * 100)
     if not row:
         cur.execute(
             """INSERT INTO transactions 
-               (occurred_on, account_id, category_id, kind, amount_minor, currency, description)
-               VALUES (?, ?, ?, 'expense', ?, 'ARS', ?)""",
-            (occurred_on.isoformat(), account_id, category_id, amount_minor, name)
+               (user_id, occurred_on, account_id, category_id, kind, amount_minor, currency, description)
+               VALUES (?, ?, ?, ?, 'expense', ?, 'ARS', ?)""",
+            (user_id, occurred_on.isoformat(), account_id, category_id, amount_minor, name)
         )
-        print(f"Added transaction: {name} on {occurred_on} ({amount_ars} ARS)")
+        print(f"Added transaction for Erica: {name} on {occurred_on} ({amount_ars} ARS)")
     conn.commit()
 
 def main():
-    print("Starting import from Excel to SQLite DB...")
+    print("Starting import from Excel to SQLite DB (Multi-tenant mode)...")
     migrate_db()
     
     conn = get_db_connection()
-    account_ids = create_accounts(conn)
-    cat_ids = create_categories(conn)
+    user_id = get_or_create_erica_user(conn)
+    account_ids = create_accounts(conn, user_id)
+    cat_ids = create_categories(conn, user_id)
 
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     
@@ -155,6 +171,7 @@ def main():
     for name, cat_name, amt in naranja_recurring:
         add_recurring_rule(
             conn, 
+            user_id=user_id,
             name=name, 
             kind="expense", 
             amount_ars=amt, 
@@ -195,6 +212,7 @@ def main():
     for name, amt, start, end, note in naranja_installments:
         add_recurring_rule(
             conn,
+            user_id=user_id,
             name=name,
             kind="expense",
             amount_ars=amt,
@@ -223,6 +241,7 @@ def main():
     for name, amt in naranja_one_offs:
         add_transaction(
             conn,
+            user_id=user_id,
             occurred_on=date(2026, 6, 10),
             name=name,
             amount_ars=amt,
@@ -234,6 +253,7 @@ def main():
     # Also add the one-off for camping in August
     add_transaction(
         conn,
+        user_id=user_id,
         occurred_on=date(2026, 8, 10),
         name="camping (saldo final)",
         amount_ars=13000,
@@ -267,6 +287,7 @@ def main():
             
         add_recurring_rule(
             conn,
+            user_id=user_id,
             name=f"Erica: {name}",
             kind="expense",
             amount_ars=amt,
@@ -282,6 +303,7 @@ def main():
     bancor_erica_id = account_ids["Bancor Erica"]
     add_recurring_rule(
         conn,
+        user_id=user_id,
         name="Sueldo Erica",
         kind="income",
         amount_ars=250000,
