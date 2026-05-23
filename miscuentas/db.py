@@ -56,6 +56,16 @@ def init_db():
     try:
         raw.executescript(sql)
         raw.commit()
+        # Safe migration for adding is_credit_card to accounts if not present
+        cur = raw.cursor()
+        try:
+            cur.execute("PRAGMA table_info(accounts)")
+            cols = [c[1] for c in cur.fetchall()]
+            if "is_credit_card" not in cols:
+                cur.execute("ALTER TABLE accounts ADD COLUMN is_credit_card INTEGER NOT NULL DEFAULT 0")
+                raw.commit()
+        finally:
+            cur.close()
     finally:
         raw.close()
 

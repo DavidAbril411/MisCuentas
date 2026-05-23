@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Vista Mensual (Excel) · MisCuentas{% endblock %}
+{% block content %}
+<div class="row mb-3 align-items-center">
+  <div class="col-md-6 col-12 mb-2 mb-md-0">
+    <h2>Planificación Mensual (Estilo Excel)</h2>
+    <p class="text-muted small">Visualización en cuadrícula de ingresos, gastos recurrentes y cuotas proyectadas en pesos (ARS).</p>
+  </div>
+  <div class="col-md-6 col-12 d-flex justify-content-md-end justify-content-start gap-2">
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('transactions.new_installment') }}">Nueva Compra en Cuotas</a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('transactions.transfer') }}">Nueva Transferencia / Pago</a>
+  </div>
+</div>
+
+<!-- Tabs to separate sections for better mobile display -->
+<ul class="nav nav-tabs mb-4 scroll-tabs flex-nowrap" id="mensualTabs" role="tablist" style="overflow-x: auto; white-space: nowrap;">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active fw-semibold" id="resumen-tab" data-bs-toggle="tab" data-bs-target="#resumen" type="button" role="tab" aria-controls="resumen" aria-selected="true">Resumen General</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link fw-semibold" id="tarjetas-tab" data-bs-toggle="tab" data-bs-target="#tarjetas" type="button" role="tab" aria-controls="tarjetas" aria-selected="false">Tarjetas de Crédito</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link fw-semibold" id="gastos-tab" data-bs-toggle="tab" data-bs-target="#gastos" type="button" role="tab" aria-controls="gastos" aria-selected="false">Gastos Fijos (Cuentas)</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link fw-semibold" id="ingresos-tab" data-bs-toggle="tab" data-bs-target="#ingresos" type="button" role="tab" aria-controls="ingresos" aria-selected="false">Ingresos</button>
+  </li>
+</ul>
+
+<div class="tab-content" id="mensualTabContent">
+  
+  <!-- Tab 1: Resumen General -->
+  <div class="tab-pane fade show active" id="resumen" role="tabpanel" aria-labelledby="resumen-tab">
+    <div class="card shadow-sm border-0 rounded-3 mb-4 overflow-hidden">
+      <div class="card-header bg-light py-3">
+        <h5 class="mb-0 text-primary">Flujo Mensual Proyectado</h5>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 text-nowrap">
+          <thead class="table-dark">
+            <tr>
+              <th style="min-width: 200px;">Concepto</th>
+              {% for name in month_names %}
+                <th class="text-end text-mono" style="min-width: 110px;">{{ name }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="table-success fw-semibold">
+              <td>Total Ingresos Proyectados</td>
+              {% for val in total_income %}
+                <td class="text-end text-mono text-success">{{ val | ars }}</td>
+              {% endfor %}
+            </tr>
+            <tr class="table-danger fw-semibold">
+              <td>Total Gastos Proyectados</td>
+              {% for val in total_expense %}
+                <td class="text-end text-mono text-danger">-{{ val | ars }}</td>
+              {% endfor %}
+            </tr>
+            <tr class="table-warning fw-bold fs-6 border-top border-2 border-dark">
+              <td>Saldo Mensual (Neto)</td>
+              {% for val in net_saldo %}
+                <td class="text-end text-mono {{ 'text-success' if val >= 0 else 'text-danger' }}">
+                  {{ val | ars }}
+                </td>
+              {% endfor %}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 2: Tarjetas de Crédito -->
+  <div class="tab-pane fade" id="tarjetas" role="tabpanel" aria-labelledby="tarjetas-tab">
+    {% for card in credit_cards %}
+      <div class="card shadow-sm border-0 rounded-3 mb-4 overflow-hidden">
+        <div class="card-header bg-gradient bg-primary py-3 d-flex justify-content-between align-items-center">
+          <h5 class="mb-0 text-white">{{ card.name }}</h5>
+          <span class="badge bg-white text-primary">Tarjeta de Crédito ({{ card.currency }})</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0 text-nowrap">
+            <thead class="table-light">
+              <tr>
+                <th style="min-width: 250px;">Consumo / Cuota</th>
+                <th style="min-width: 100px;">Detalle</th>
+                {% for name in month_names %}
+                  <th class="text-end text-mono" style="min-width: 110px;">{{ name }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% set card_has_rows = namespace(value=false) %}
+              {% for row in credit_card_rows if row.account == card.name %}
+                {% set card_has_rows.value = true %}
+                <tr>
+                  <td class="fw-semibold">{{ row.name }}</td>
+                  <td class="small text-muted">{{ row.notes }}</td>
+                  {% for val in row.values %}
+                    <td class="text-end text-mono {{ 'text-muted opacity-50' if val == 0 else '' }}">
+                      {{ val | ars if val > 0 else '—' }}
+                    </td>
+                  {% endfor %}
+                </tr>
+              {% endfor %}
+              
+              {% if not card_has_rows.value %}
+                <tr>
+                  <td colspan="{{ 2 + 12 }}" class="text-center text-muted py-4">No hay consumos recurrentes ni cuotas registradas en esta tarjeta.</td>
+                </tr>
+              {% else %}
+                <tr class="table-secondary fw-bold border-top border-2">
+                  <td>TOTAL CONSUMOS {{ card.name }}</td>
+                  <td></td>
+                  {% for val in card_totals[card.name] %}
+                    <td class="text-end text-mono">{{ val | ars if val > 0 else '—' }}</td>
+                  {% endfor %}
+                </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Tab 3: Gastos Fijos (Cuentas) -->
+  <div class="tab-pane fade" id="gastos" role="tabpanel" aria-labelledby="gastos-tab">
+    <div class="card shadow-sm border-0 rounded-3 mb-4 overflow-hidden">
+      <div class="card-header bg-light py-3">
+        <h5 class="mb-0 text-danger">Gastos Fijos y Suscripciones (Bancos / Billeteras)</h5>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 text-nowrap">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width: 250px;">Nombre del Gasto</th>
+              <th style="min-width: 150px;">Cuenta de Pago</th>
+              {% for name in month_names %}
+                <th class="text-end text-mono" style="min-width: 110px;">{{ name }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in general_expense_rows %}
+              <tr>
+                <td class="fw-semibold">{{ row.name }}</td>
+                <td><span class="badge bg-secondary">{{ row.account }}</span></td>
+                {% for val in row.values %}
+                  <td class="text-end text-mono {{ 'text-muted opacity-50' if val == 0 else '' }}">
+                    {{ val | ars if val > 0 else '—' }}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="{{ 2 + 12 }}" class="text-center text-muted py-4">No hay gastos fijos registrados.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 4: Ingresos -->
+  <div class="tab-pane fade" id="ingresos" role="tabpanel" aria-labelledby="ingresos-tab">
+    <div class="card shadow-sm border-0 rounded-3 mb-4 overflow-hidden">
+      <div class="card-header bg-light py-3">
+        <h5 class="mb-0 text-success">Ingresos Proyectados</h5>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 text-nowrap">
+          <thead class="table-light">
+            <tr>
+              <th style="min-width: 250px;">Fuente de Ingreso</th>
+              <th style="min-width: 150px;">Cuenta Destino</th>
+              {% for name in month_names %}
+                <th class="text-end text-mono" style="min-width: 110px;">{{ name }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in income_rows %}
+              <tr>
+                <td class="fw-semibold text-success">{{ row.name }}</td>
+                <td><span class="badge bg-success bg-opacity-75 text-white">{{ row.account }}</span></td>
+                {% for val in row.values %}
+                  <td class="text-end text-mono text-success {{ 'text-muted opacity-50' if val == 0 else '' }}">
+                    {{ val | ars if val > 0 else '—' }}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="{{ 2 + 12 }}" class="text-center text-muted py-4">No hay ingresos recurrentes registrados.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}

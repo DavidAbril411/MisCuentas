@@ -20,6 +20,7 @@ class Account(Base):
     opening_fx_rate_to_ars_micro: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     archived: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_credit_card: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="account")
 

@@ -47,6 +47,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     from .routes.recurring import bp as recurring_bp
     from .routes.debts import bp as debts_bp
     from .routes.fx import bp as fx_bp
+    from .routes.mensual import bp as mensual_bp
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(accounts_bp, url_prefix="/accounts")
@@ -54,5 +55,6 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     app.register_blueprint(recurring_bp, url_prefix="/recurring")
     app.register_blueprint(debts_bp, url_prefix="/debts")
     app.register_blueprint(fx_bp, url_prefix="/fx")
+    app.register_blueprint(mensual_bp, url_prefix="/mensual")
 
     return app

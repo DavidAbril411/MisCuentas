@@ -2,36 +2,40 @@
 {% block title %}Dashboard · MisCuentas{% endblock %}
 {% block content %}
 
-<div class="row mb-3">
-  <div class="col">
+<div class="row mb-3 align-items-center">
+  <div class="col-md-8 col-12">
     <h2>Resumen al {{ today.strftime("%d-%m-%Y") }}</h2>
-    <p class="small-muted">Cotización vigente: 1 USD = {{ rate }} ARS &middot;
+    <p class="small-muted mb-2 mb-md-0">Cotización vigente: 1 USD = {{ rate }} ARS &middot;
       <a href="{{ url_for('fx.new') }}">actualizar</a></p>
+  </div>
+  <div class="col-md-4 col-12 d-flex justify-content-md-end justify-content-start gap-2 mt-2 mt-md-0">
+    <a class="btn btn-primary btn-sm px-3" href="{{ url_for('transactions.new') }}">+ Movimiento</a>
+    <a class="btn btn-outline-primary btn-sm px-3" href="{{ url_for('transactions.new_installment') }}">+ Cuota</a>
   </div>
 </div>
 
 <div class="row g-3 mb-4">
-  <div class="col-md-3">
-    <div class="card shadow-sm"><div class="card-body">
+  <div class="col-md-3 col-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
       <div class="small-muted">Patrimonio neto</div>
       <div class="h3 {{ 'money-pos' if nw.total_minor >= 0 else 'money-neg' }}">{{ nw.total_minor | ars }}</div>
       <div class="small-muted">Cuentas + a cobrar − a pagar</div>
     </div></div>
   </div>
-  <div class="col-md-3">
-    <div class="card shadow-sm"><div class="card-body">
+  <div class="col-md-3 col-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
       <div class="small-muted">En cuentas</div>
       <div class="h4">{{ nw.accounts_ars_minor | ars }}</div>
     </div></div>
   </div>
-  <div class="col-md-3">
-    <div class="card shadow-sm"><div class="card-body">
+  <div class="col-md-3 col-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
       <div class="small-muted">A cobrar</div>
       <div class="h4 money-pos">{{ nw.receivables_ars_minor | ars }}</div>
     </div></div>
   </div>
-  <div class="col-md-3">
-    <div class="card shadow-sm"><div class="card-body">
+  <div class="col-md-3 col-6">
+    <div class="card shadow-sm h-100"><div class="card-body">
       <div class="small-muted">A pagar</div>
       <div class="h4 money-neg">{{ nw.payables_ars_minor | ars }}</div>
     </div></div>
@@ -39,74 +43,98 @@
 </div>
 
 <div class="row g-3 mb-4">
-  <div class="col-md-6">
+  <div class="col-md-6 col-12">
     <div class="card shadow-sm"><div class="card-body">
       <h5>Flujo recurrente mensual</h5>
-      <table class="table table-sm mb-0">
-        <tr><td>Ingresos recurrentes</td><td class="text-end money-pos">{{ rec_income | ars }}</td></tr>
-        <tr><td>Gastos recurrentes</td><td class="text-end money-neg">−{{ rec_expense | ars }}</td></tr>
-        <tr class="fw-bold"><td>Neto mensual</td><td class="text-end {{ 'money-pos' if rec_net >= 0 else 'money-neg' }}">{{ rec_net | ars }}</td></tr>
-      </table>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 text-nowrap">
+          <tr><td>Ingresos recurrentes</td><td class="text-end money-pos">{{ rec_income | ars }}</td></tr>
+          <tr><td>Gastos recurrentes</td><td class="text-end money-neg">−{{ rec_expense | ars }}</td></tr>
+          <tr class="fw-bold"><td>Neto mensual</td><td class="text-end {{ 'money-pos' if rec_net >= 0 else 'money-neg' }}">{{ rec_net | ars }}</td></tr>
+        </table>
+      </div>
       <div class="small-muted mt-2">USD convertido a la cotización vigente.</div>
     </div></div>
   </div>
-  <div class="col-md-6">
+  <div class="col-md-6 col-12">
     <div class="card shadow-sm"><div class="card-body">
-      <h5>Cuentas</h5>
-      <table class="table table-sm mb-0">
-        {% for s in accounts %}
-          <tr>
-            <td>
-              {{ s.account.name }}
-              <span class="badge {{ 'badge-usd' if s.account.currency == 'USD' else 'badge-ars' }}">{{ s.account.currency }}</span>
-            </td>
-            <td class="text-end text-mono">{{ s.balance_minor | money(s.account.currency) }}</td>
-            <td class="text-end small-muted">{{ s.balance_ars_minor | ars }}</td>
-          </tr>
-        {% endfor %}
-      </table>
+      <h5>Bancos / Billeteras</h5>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle mb-0 text-nowrap">
+          {% for s in accounts if not s.account.is_credit_card %}
+            <tr>
+              <td>
+                {{ s.account.name }}
+                <span class="badge {{ 'badge-usd' if s.account.currency == 'USD' else 'badge-ars' }}">{{ s.account.currency }}</span>
+              </td>
+              <td class="text-end text-mono">{{ s.balance_minor | money(s.account.currency) }}</td>
+              <td class="text-end small-muted">{{ s.balance_ars_minor | ars }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
+      
+      <h5>Tarjetas de Crédito</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 text-nowrap">
+          {% for s in accounts if s.account.is_credit_card %}
+            <tr>
+              <td>
+                {{ s.account.name }}
+                <span class="badge {{ 'badge-usd' if s.account.currency == 'USD' else 'badge-ars' }}">{{ s.account.currency }}</span>
+              </td>
+              <td class="text-end text-mono text-danger">{{ s.balance_minor | money(s.account.currency) }}</td>
+              <td class="text-end small-muted">{{ s.balance_ars_minor | ars }}</td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
     </div></div>
   </div>
 </div>
 
 <div class="row g-3 mb-4">
-  <div class="col-md-6">
+  <div class="col-md-6 col-12">
     <div class="card shadow-sm"><div class="card-body">
       <h5>A cobrar ({{ receivables | length }})</h5>
       {% if receivables %}
-      <table class="table table-sm mb-0">
-        <thead><tr><th>De</th><th>Vence</th><th class="text-end">Pendiente</th><th></th></tr></thead>
-        {% for s in receivables %}
-          <tr>
-            <td>{{ s.debt.counterparty }}</td>
-            <td>{{ s.debt.due_on.strftime("%d-%m-%Y") if s.debt.due_on else "—" }}</td>
-            <td class="text-end text-mono">{{ s.outstanding_minor | money(s.debt.currency) }}
-              <div class="small-muted">≈ {{ s.outstanding_ars_minor | ars }}</div>
-            </td>
-            <td><a class="btn btn-sm btn-outline-success" href="{{ url_for('debts.pay', debt_id=s.debt.id) }}">Cobrar</a></td>
-          </tr>
-        {% endfor %}
-      </table>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 text-nowrap">
+          <thead><tr><th>De</th><th>Vence</th><th class="text-end">Pendiente</th><th></th></tr></thead>
+          {% for s in receivables %}
+            <tr>
+              <td>{{ s.debt.counterparty }}</td>
+              <td>{{ s.debt.due_on.strftime("%d-%m-%Y") if s.debt.due_on else "—" }}</td>
+              <td class="text-end text-mono">{{ s.outstanding_minor | money(s.debt.currency) }}
+                <div class="small-muted">≈ {{ s.outstanding_ars_minor | ars }}</div>
+              </td>
+              <td><a class="btn btn-sm btn-outline-success px-2 py-1" href="{{ url_for('debts.pay', debt_id=s.debt.id) }}">Cobrar</a></td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
       {% else %}<p class="small-muted">Nada por cobrar.</p>{% endif %}
     </div></div>
   </div>
-  <div class="col-md-6">
+  <div class="col-md-6 col-12">
     <div class="card shadow-sm"><div class="card-body">
       <h5>A pagar ({{ payables | length }})</h5>
       {% if payables %}
-      <table class="table table-sm mb-0">
-        <thead><tr><th>A</th><th>Vence</th><th class="text-end">Pendiente</th><th></th></tr></thead>
-        {% for s in payables %}
-          <tr>
-            <td>{{ s.debt.counterparty }}</td>
-            <td>{{ s.debt.due_on.strftime("%d-%m-%Y") if s.debt.due_on else "—" }}</td>
-            <td class="text-end text-mono">{{ s.outstanding_minor | money(s.debt.currency) }}
-              <div class="small-muted">≈ {{ s.outstanding_ars_minor | ars }}</div>
-            </td>
-            <td><a class="btn btn-sm btn-outline-danger" href="{{ url_for('debts.pay', debt_id=s.debt.id) }}">Pagar</a></td>
-          </tr>
-        {% endfor %}
-      </table>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 text-nowrap">
+          <thead><tr><th>A</th><th>Vence</th><th class="text-end">Pendiente</th><th></th></tr></thead>
+          {% for s in payables %}
+            <tr>
+              <td>{{ s.debt.counterparty }}</td>
+              <td>{{ s.debt.due_on.strftime("%d-%m-%Y") if s.debt.due_on else "—" }}</td>
+              <td class="text-end text-mono">{{ s.outstanding_minor | money(s.debt.currency) }}
+                <div class="small-muted">≈ {{ s.outstanding_ars_minor | ars }}</div>
+              </td>
+              <td><a class="btn btn-sm btn-outline-danger px-2 py-1" href="{{ url_for('debts.pay', debt_id=s.debt.id) }}">Pagar</a></td>
+            </tr>
+          {% endfor %}
+        </table>
+      </div>
       {% else %}<p class="small-muted">Nada por pagar.</p>{% endif %}
     </div></div>
   </div>

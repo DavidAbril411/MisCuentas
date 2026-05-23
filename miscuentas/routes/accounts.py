@@ -20,6 +20,7 @@ def new():
         currency = request.form["currency"]
         opening_balance = request.form.get("opening_balance", "0").strip() or "0"
         opening_fx = request.form.get("opening_fx", "").strip()
+        is_cc = 1 if request.form.get("is_credit_card") else 0
         acc = Account(
             name=request.form["name"].strip(),
             currency=currency,
@@ -27,6 +28,7 @@ def new():
             opening_fx_rate_to_ars_micro=(
                 fx_to_micro(opening_fx) if currency == "USD" and opening_fx else None
             ),
+            is_credit_card=is_cc,
         )
         g.session.add(acc)
         g.session.commit()
@@ -44,6 +46,7 @@ def edit(acc_id):
     if request.method == "POST":
         acc.name = request.form["name"].strip()
         acc.archived = 1 if request.form.get("archived") else 0
+        acc.is_credit_card = 1 if request.form.get("is_credit_card") else 0
         g.session.commit()
         flash("Cuenta actualizada", "success")
         return redirect(url_for("accounts.list_accounts"))

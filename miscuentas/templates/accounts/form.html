@@ -6,6 +6,10 @@
     <label class="form-label">Nombre</label>
     <input class="form-control" name="name" required value="{{ account.name if account else '' }}">
   </div>
+  <div class="col-md-6 form-check ms-2">
+    <input class="form-check-input" type="checkbox" name="is_credit_card" id="is_credit_card" {% if account and account.is_credit_card %}checked{% endif %}>
+    <label class="form-check-label" for="is_credit_card">Es Tarjeta de Crédito</label>
+  </div>
   {% if not account %}
   <div class="col-md-6">
     <label class="form-label">Moneda</label>

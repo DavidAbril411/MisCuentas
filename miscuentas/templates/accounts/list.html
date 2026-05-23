@@ -9,7 +9,11 @@
   <tbody>
   {% for s in snaps %}
     <tr>
-      <td>{{ s.account.name }}{% if s.account.archived %} <span class="badge bg-secondary">archivada</span>{% endif %}</td>
+      <td>
+        {{ s.account.name }}
+        {% if s.account.is_credit_card %} <span class="badge bg-info text-dark">tarjeta</span>{% endif %}
+        {% if s.account.archived %} <span class="badge bg-secondary">archivada</span>{% endif %}
+      </td>
       <td><span class="badge {{ 'badge-usd' if s.account.currency=='USD' else 'badge-ars' }}">{{ s.account.currency }}</span></td>
       <td class="text-end text-mono">{{ s.balance_minor | money(s.account.currency) }}</td>
       <td class="text-end small-muted">{{ s.balance_ars_minor | ars }}</td>

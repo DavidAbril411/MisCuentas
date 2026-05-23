@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     opening_fx_rate_to_ars_micro INTEGER,
     created_at                   TEXT    NOT NULL DEFAULT (datetime('now')),
     archived                     INTEGER NOT NULL DEFAULT 0,
+    is_credit_card               INTEGER NOT NULL DEFAULT 0,
     CHECK (
         (currency = 'ARS' AND opening_fx_rate_to_ars_micro IS NULL)
         OR (currency = 'USD' AND (opening_balance_minor = 0 OR opening_fx_rate_to_ars_micro IS NOT NULL))
