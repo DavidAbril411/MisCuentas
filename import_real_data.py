@@ -4,11 +4,35 @@ from datetime import datetime, date
 import os
 from werkzeug.security import generate_password_hash
 
-excel_path = "/Users/davidabrilperrig/dev/MisCuentas/cuentas 2026 Erica (1).xlsx"
-if not os.path.exists(excel_path):
-    excel_path = "/Users/davidabrilperrig/Dev/MisCuentas/cuentas 2026 Erica (1).xlsx"
+excel_path = os.environ.get("MISCUENTAS_EXCEL")
+if not excel_path:
+    possible_excel_paths = [
+        "/Users/davidabrilperrig/dev/MisCuentas/cuentas 2026 Erica (1).xlsx",
+        "/Users/davidabrilperrig/Dev/MisCuentas/cuentas 2026 Erica (1).xlsx",
+        os.path.join(os.path.dirname(__file__), "cuentas 2026 Erica (1).xlsx"),
+        "cuentas 2026 Erica (1).xlsx"
+    ]
+    for p in possible_excel_paths:
+        if os.path.exists(p):
+            excel_path = p
+            break
+    if not excel_path:
+        excel_path = os.path.join(os.path.dirname(__file__), "cuentas 2026 Erica (1).xlsx")
 
-db_path = "/Users/davidabrilperrig/dev/MisCuentas/miscuentas.db"
+db_path = os.environ.get("MISCUENTAS_DB")
+if not db_path:
+    possible_db_paths = [
+        "/Users/davidabrilperrig/dev/MisCuentas/miscuentas.db",
+        "/Users/davidabrilperrig/Dev/MisCuentas/miscuentas.db",
+        os.path.join(os.path.dirname(__file__), "miscuentas.db"),
+        "miscuentas.db"
+    ]
+    for p in possible_db_paths:
+        if os.path.exists(p):
+            db_path = p
+            break
+    if not db_path:
+        db_path = os.path.join(os.path.dirname(__file__), "miscuentas.db")
 
 def get_db_connection():
     return sqlite3.connect(db_path)
